@@ -44,7 +44,7 @@ def _tail_context(text, overlap):
     return tail
 
 
-def chunk_text(text, chunk_size=800, overlap=150):
+def chunk_text(text, chunk_size=400, overlap=50):
     text = _clean_text(text)
 
     if not text:
