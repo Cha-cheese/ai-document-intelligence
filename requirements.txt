@@ -2,9 +2,10 @@ fastapi
 uvicorn
 python-multipart
 pymupdf
-faiss-cpu
 numpy
 streamlit
 requests
 groq
-fastembed
+requests
+numpy
+scikit-learn
