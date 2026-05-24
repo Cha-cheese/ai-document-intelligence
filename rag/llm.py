@@ -1,14 +1,17 @@
 import os
 
-from dotenv import load_dotenv
 from groq import Groq
 
 
-load_dotenv()
+def _client():
+    api_key = os.getenv("GROQ_API_KEY")
 
-client = Groq(
-    api_key=os.getenv("GROQ_API_KEY")
-)
+    if not api_key:
+        raise RuntimeError(
+            "GROQ_API_KEY is not set. Add it in your Render environment variables."
+        )
+
+    return Groq(api_key=api_key)
 
 SYSTEM_PROMPT = """
 You are an advanced AI document analyst.
@@ -143,7 +146,7 @@ When source numbers are present, cite key claims with the relevant source number
 def ask_llm(question, context, history=None, mode="Analyze"):
     prompt = _build_prompt(question, context, history, mode)
 
-    response = client.chat.completions.create(
+    response = _client().chat.completions.create(
         model="llama-3.3-70b-versatile",
         messages=[
             {
@@ -164,7 +167,7 @@ def ask_llm(question, context, history=None, mode="Analyze"):
 def stream_llm(question, context, history=None, mode="Analyze"):
     prompt = _build_prompt(question, context, history, mode)
 
-    response = client.chat.completions.create(
+    response = _client().chat.completions.create(
         model="llama-3.3-70b-versatile",
         messages=[
             {

@@ -1,5 +1,4 @@
 import numpy as np
-from sklearn.metrics.pairwise import cosine_similarity
 
 
 class VectorStore:
@@ -14,15 +13,30 @@ class VectorStore:
         self.embeddings.extend(embeddings)
         self.texts.extend(texts)
 
+    def cosine_similarity(self, a, b):
+
+        a = np.array(a)
+        b = np.array(b)
+
+        return np.dot(a, b) / (
+            np.linalg.norm(a) * np.linalg.norm(b)
+        )
+
     def search(self, query_embedding, top_k=5):
 
         if not self.embeddings:
             return []
 
-        similarities = cosine_similarity(
-            [query_embedding],
-            self.embeddings
-        )[0]
+        similarities = []
+
+        for emb in self.embeddings:
+
+            sim = self.cosine_similarity(
+                query_embedding,
+                emb
+            )
+
+            similarities.append(sim)
 
         top_indices = np.argsort(similarities)[::-1][:top_k]
 

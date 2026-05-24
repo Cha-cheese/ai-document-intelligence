@@ -2,9 +2,8 @@ fastapi
 uvicorn
 python-multipart
 pymupdf
-numpy
 streamlit
 requests
 groq
-openai
-scikit-learn
+numpy
+openai==0.28.0
