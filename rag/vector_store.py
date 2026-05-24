@@ -16,7 +16,7 @@ class VectorStore:
 
     def search(self, query_embedding, top_k=5):
 
-        if len(self.embeddings) == 0:
+        if not self.embeddings:
             return []
 
         similarities = cosine_similarity(

@@ -6,6 +6,5 @@ numpy
 streamlit
 requests
 groq
-requests
-numpy
+openai
 scikit-learn
