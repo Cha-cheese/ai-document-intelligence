@@ -78,7 +78,13 @@ async def upload_pdf(file: UploadFile = File(...)):
         # =========================
         # EMBEDDINGS
         # =========================
-        embeddings = get_embedding(chunks)
+        embeddings = []
+
+        batch_size = 8
+
+        for i in range(0, len(chunks), batch_size):
+            batch = chunks[i:i+batch_size]
+            embeddings.extend([get_embedding(c) for c in batch])
 
         # =========================
         # STORE

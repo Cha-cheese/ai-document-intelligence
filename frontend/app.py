@@ -496,7 +496,7 @@ render_chat_history()
 
 question = st.chat_input(
     "Ask anything about the document...",
-    disabled=not st.session_state.profile
+    disabled=False
 )
 
 if st.session_state.pending_question:
