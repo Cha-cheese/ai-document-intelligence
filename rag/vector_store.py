@@ -15,8 +15,7 @@ class VectorStore:
             return []
 
         scores = np.dot(self.vectors, query_embedding)
-
-        top_idx = np.argsort(scores)[::-1][:top_k]
+        idx = np.argsort(scores)[::-1][:top_k]
 
         return [
             {
@@ -24,5 +23,5 @@ class VectorStore:
                 "score": float(scores[i]),
                 "source_id": i
             }
-            for i in top_idx
+            for i in idx
         ]

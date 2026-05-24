@@ -6,12 +6,11 @@ import os
 import json
 import gc
 
-# =====================
-# SAFE IMPORT (lazy later)
-# =====================
-
 app = FastAPI()
 
+# =========================
+# LAZY GLOBALS (สำคัญมาก)
+# =========================
 vector_store = None
 
 
@@ -21,15 +20,17 @@ class QuestionRequest(BaseModel):
     mode: str = "Analyze"
 
 
+# =========================
+# ROOT
+# =========================
 @app.get("/")
 def root():
     return {"status": "ok"}
 
 
-# =====================
-# LAZY LOAD FUNCTIONS
-# =====================
-
+# =========================
+# LAZY IMPORT HELPERS
+# =========================
 def get_vector_store():
     global vector_store
     if vector_store is None:
@@ -44,30 +45,29 @@ def get_embedding():
 
 
 def get_llm():
-    from rag.llm import ask_llm, stream_llm
-    return ask_llm, stream_llm
+    from rag.llm import ask_llm
+    return ask_llm
 
 
-def get_pdf_loader():
+def get_pdf():
     from backend.pdf_loader import extract_text_from_pdf
     return extract_text_from_pdf
 
 
-def get_chunker():
+def get_chunk():
     from rag.chunking import chunk_text
     return chunk_text
 
 
-# =====================
-# UPLOAD
-# =====================
+# =========================
+# UPLOAD (SAFE)
+# =========================
 @app.post("/upload")
 async def upload_pdf(file: UploadFile = File(...)):
-
     try:
-        extract_text_from_pdf = get_pdf_loader()
-        chunk_text = get_chunker()
-        VectorStore = get_vector_store()
+        extract_text_from_pdf = get_pdf()
+        chunk_text = get_chunk()
+        embeddings_fn = get_embedding()
 
         contents = await file.read()
 
@@ -80,11 +80,11 @@ async def upload_pdf(file: UploadFile = File(...)):
         text = extract_text_from_pdf(path)
         chunks = chunk_text(text)
 
-        embeddings_fn = get_embedding()
-
         embeddings = []
-        for i in range(0, len(chunks), 4):
-            batch = chunks[i:i+4]
+        batch_size = 3  # 🔥 small batch to prevent OOM
+
+        for i in range(0, len(chunks), batch_size):
+            batch = chunks[i:i+batch_size]
             embeddings.extend(embeddings_fn(batch))
             gc.collect()
 
@@ -94,25 +94,27 @@ async def upload_pdf(file: UploadFile = File(...)):
         gc.collect()
 
         return {
-            "message": "Indexed",
+            "message": "Indexed successfully",
             "chunks": len(chunks),
-            "filename": file.filename
+            "filename": file.filename,
+            "profile": {
+                "word_count": len(text.split()),
+                "reading_time_minutes": max(1, len(text.split()) // 220)
+            }
         }
 
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": str(e), "message": "upload failed"}
 
 
-# =====================
-# CHAT
-# =====================
+# =========================
+# CHAT (NO STREAM = STABLE)
+# =========================
 @app.post("/chat")
 async def chat(request: QuestionRequest):
-
     try:
         embeddings_fn = get_embedding()
-        ask_llm, _ = get_llm()
-
+        ask_llm = get_llm()
         store = get_vector_store()
 
         query_emb = embeddings_fn([request.question])[0]
@@ -133,4 +135,49 @@ async def chat(request: QuestionRequest):
         }
 
     except Exception as e:
-        return {"error": str(e)}
+        return {
+            "error": str(e),
+            "answer": "AI failed",
+            "sources": []
+        }
+
+
+# =========================
+# STREAM (DISABLED SAFE VERSION)
+# =========================
+@app.post("/chat/stream")
+async def chat_stream(request: QuestionRequest):
+    """
+    ⚠️ Safe fallback streaming (NOT real token streaming)
+    prevents Render 502 crash
+    """
+    try:
+        embeddings_fn = get_embedding()
+        store = get_vector_store()
+        ask_llm = get_llm()
+
+        query_emb = embeddings_fn([request.question])[0]
+        docs = store.search(query_emb, top_k=5)
+
+        context = "\n\n".join([d["content"] for d in docs])
+
+        answer = ask_llm(
+            request.question,
+            context,
+            history=request.history,
+            mode=request.mode
+        )
+
+        def stream():
+            yield f"event: sources\ndata: {json.dumps(docs)}\n\n"
+            yield f"event: token\ndata: {json.dumps(answer)}\n\n"
+            yield f"event: done\ndata: {{\"ok\": true}}\n\n"
+
+        return StreamingResponse(stream(), media_type="text/event-stream")
+
+    except Exception as e:
+
+        def err():
+            yield f"event: error\ndata: {json.dumps({'error': str(e)})}\n\n"
+
+        return StreamingResponse(err(), media_type="text/event-stream")

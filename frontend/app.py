@@ -301,7 +301,7 @@ def stream_chat(question):
     answer = ""
 
     with requests.post(
-        f"{API_URL}/chat/stream",
+        f"{API_URL}/chat",
         json=payload,
         stream=True,
         timeout=180

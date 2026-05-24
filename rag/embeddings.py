@@ -1,19 +1,18 @@
 from sentence_transformers import SentenceTransformer
 import torch
 
-# ❌ DO NOT load at import time in production heavy server
 _model = None
 
 
-def load_model():
+def load():
     global _model
     if _model is None:
-        _model = SentenceTransformer("all-MiniLM-L6-v2")  # small model
+        _model = SentenceTransformer("all-MiniLM-L6-v2")
     return _model
 
 
 def get_embedding(texts):
-    model = load_model()
+    model = load()
 
     if isinstance(texts, str):
         texts = [texts]
@@ -21,7 +20,7 @@ def get_embedding(texts):
     with torch.no_grad():
         return model.encode(
             texts,
-            batch_size=4,
-            show_progress_bar=False,
-            convert_to_numpy=True
+            batch_size=2,   # 🔥 very important for Render
+            convert_to_numpy=True,
+            show_progress_bar=False
         )
