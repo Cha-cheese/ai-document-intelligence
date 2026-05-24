@@ -503,7 +503,7 @@ if st.session_state.pending_question:
     queued_question = st.session_state.pending_question
     st.session_state.pending_question = None
     answer_question(queued_question)
-    st.rerun()
 
 if question:
-    answer_question(question)
+    st.session_state.pending_question = question
+    st.rerun()

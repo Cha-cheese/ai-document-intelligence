@@ -158,6 +158,7 @@ async def chat(request: QuestionRequest):
             history=request.history,
             mode=request.mode
         )
+        print("ANSWER:", answer)
 
         return {
             "answer": answer,
