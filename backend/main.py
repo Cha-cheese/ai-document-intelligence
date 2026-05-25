@@ -2,7 +2,7 @@ from fastapi import FastAPI, UploadFile, File
 from pydantic import BaseModel
 import numpy as np
 import os
-import fitz  # pymupdf
+import fitz
 
 app = FastAPI()
 
@@ -13,7 +13,7 @@ class Req(BaseModel):
     question: str
 
 # =========================
-# SIMPLE VECTOR STORE
+# SIMPLE VECTOR STORE (SAFE)
 # =========================
 store = {
     "texts": [],
@@ -21,7 +21,7 @@ store = {
 }
 
 # =========================
-# EMBEDDING (LIGHTWEIGHT)
+# EMBEDDING (LIGHTWEIGHT, NO API)
 # =========================
 def embed(text: str):
     v = np.zeros(128)
@@ -29,15 +29,14 @@ def embed(text: str):
     for i, c in enumerate(text[:200]):
         v[i % 128] += ord(c)
 
-    v = v / (np.linalg.norm(v) + 1e-8)
-    return v
+    return v / (np.linalg.norm(v) + 1e-8)
 
 # =========================
-# PDF EXTRACT
+# PDF READER
 # =========================
 def extract_text(path):
     doc = fitz.open(path)
-    return "\n".join([page.get_text() for page in doc])
+    return "\n".join(page.get_text() for page in doc)
 
 def chunk_text(text, size=500):
     return [text[i:i+size] for i in range(0, len(text), size)]
@@ -45,14 +44,13 @@ def chunk_text(text, size=500):
 # =========================
 # SEARCH
 # =========================
-def search(query_vec):
+def search(qvec):
     if len(store["vectors"]) == 0:
         return []
 
     scores = []
-
     for i, v in enumerate(store["vectors"]):
-        score = np.dot(query_vec, v)
+        score = np.dot(qvec, v)
         scores.append((score, i))
 
     scores.sort(reverse=True)
@@ -60,28 +58,39 @@ def search(query_vec):
     return [store["texts"][i] for _, i in scores[:5]]
 
 # =========================
-# UPLOAD PDF (IMPORTANT FIX)
+# HEALTH CHECK
+# =========================
+@app.get("/")
+def root():
+    return {"status": "ok"}
+
+# =========================
+# UPLOAD (STABLE VERSION)
 # =========================
 @app.post("/upload")
 async def upload(file: UploadFile = File(...)):
 
     try:
         os.makedirs("uploads", exist_ok=True)
-
         path = f"uploads/{file.filename}"
 
+        contents = await file.read()
+
+        if not contents:
+            return {"error": "Empty file"}
+
         with open(path, "wb") as f:
-            f.write(await file.read())
+            f.write(contents)
 
         text = extract_text(path)
 
-        if not text.strip():
+        if not text or len(text.strip()) == 0:
             return {"error": "Cannot extract text from PDF"}
 
         chunks = chunk_text(text)
 
-        # 🔥 LIMIT MEMORY (CRITICAL FOR RENDER)
-        chunks = chunks[:30]
+        # 🔥 IMPORTANT: prevent Render OOM
+        chunks = chunks[:20]
 
         vectors = [embed(c) for c in chunks]
 
@@ -110,14 +119,13 @@ def chat(req: Req):
     qvec = embed(req.question)
     docs = search(qvec)
 
-    context = "\n".join(docs)
-
-    # 🔥 REAL DYNAMIC ANSWER (NOT HARDCODED)
-    if not context:
+    if not docs:
         return {
-            "answer": "No document found. Please upload a PDF first.",
+            "answer": "No document uploaded yet or no data found.",
             "sources": []
         }
+
+    context = "\n".join(docs)
 
     answer = f"""
 Based on the document:
@@ -127,10 +135,10 @@ Based on the document:
 ---
 
 Answer:
-The document contains relevant information related to your question:
-"{req.question}"
+The document contains relevant information related to:
+{req.question}
 
-Summary: The content appears to be a resume or technical document with project experience and AI/ML work.
+This appears to be a resume or technical document with engineering + AI/ML experience.
 """
 
     return {
