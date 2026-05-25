@@ -3,8 +3,14 @@ from pydantic import BaseModel
 import numpy as np
 import os
 import fitz
+from openai import OpenAI
 
 app = FastAPI()
+
+# =========================
+# OPENAI CLIENT
+# =========================
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 # =========================
 # REQUEST
@@ -13,7 +19,7 @@ class Req(BaseModel):
     question: str
 
 # =========================
-# SIMPLE VECTOR STORE (SAFE)
+# VECTOR STORE
 # =========================
 store = {
     "texts": [],
@@ -21,32 +27,23 @@ store = {
 }
 
 # =========================
-# EMBEDDING (LIGHTWEIGHT, NO API)
+# EMBEDDING (LIGHT WEIGHT)
 # =========================
 def embed(text: str):
     v = np.zeros(128)
-
     for i, c in enumerate(text[:200]):
         v[i % 128] += ord(c)
-
     return v / (np.linalg.norm(v) + 1e-8)
 
 # =========================
-# PDF READER
+# PDF EXTRACT
 # =========================
 def extract_text(path):
     doc = fitz.open(path)
     return "\n".join(page.get_text() for page in doc)
 
 def chunk_text(text, size=500):
-    chunks = []
-    i = 0
-
-    while i < len(text):
-        chunks.append(text[i:i+size])
-        i += size   # ❌ ห้าม overlap
-
-    return chunks
+    return [text[i:i+size] for i in range(0, len(text), size)]
 
 # =========================
 # SEARCH
@@ -65,14 +62,14 @@ def search(qvec):
     return [store["texts"][i] for _, i in scores[:5]]
 
 # =========================
-# HEALTH CHECK
+# HEALTH
 # =========================
 @app.get("/")
 def root():
     return {"status": "ok"}
 
 # =========================
-# UPLOAD (STABLE VERSION)
+# UPLOAD (SAFE + STABLE)
 # =========================
 @app.post("/upload")
 async def upload(file: UploadFile = File(...)):
@@ -83,20 +80,17 @@ async def upload(file: UploadFile = File(...)):
 
         contents = await file.read()
 
-        if not contents:
-            return {"error": "Empty file"}
-
         with open(path, "wb") as f:
             f.write(contents)
 
         text = extract_text(path)
 
-        if not text or len(text.strip()) == 0:
+        if not text.strip():
             return {"error": "Cannot extract text from PDF"}
 
         chunks = chunk_text(text)
 
-        # 🔥 IMPORTANT: prevent Render OOM
+        # 🔥 LIMIT MEMORY (IMPORTANT FOR RENDER)
         chunks = chunks[:20]
 
         vectors = [embed(c) for c in chunks]
@@ -118,7 +112,7 @@ async def upload(file: UploadFile = File(...)):
         return {"error": str(e)}
 
 # =========================
-# CHAT
+# CHAT (REAL CHATGPT + RAG)
 # =========================
 @app.post("/chat")
 def chat(req: Req):
@@ -126,42 +120,42 @@ def chat(req: Req):
     qvec = embed(req.question)
     docs = search(qvec)
 
-    # 🔥 REMOVE DUPLICATES (สำคัญมาก)
-    seen = set()
-    clean_docs = []
+    context = "\n".join(docs)
 
-    for d in docs:
-        if d not in seen:
-            clean_docs.append(d)
-            seen.add(d)
+    system_prompt = """
+You are a professional AI assistant.
 
-    context = "\n".join(clean_docs)
-
-    if not context.strip():
-        return {
-            "answer": "No relevant document found. Please upload a valid PDF.",
-            "sources": []
-        }
-
-    # 🔥 FIX ANSWER LOGIC (STOP injecting 'hi')
-    answer = f"""
-Based on the document content:
-
-{context[:1200]}
-
----
-
-Final Answer:
-This document is a resume / technical profile containing:
-- Engineering project experience
-- AI/ML phishing detection system
-- Software development (Flutter, Node.js, MySQL)
-- Team leadership experience
-
-It is NOT just a greeting or unrelated text.
+Rules:
+- Answer naturally like ChatGPT
+- Use document context if relevant
+- If context is not relevant, use general knowledge
+- Do NOT hardcode "this is resume"
+- Be helpful, clear, and concise
 """
 
-    return {
-        "answer": answer,
-        "sources": clean_docs
-    }
+    user_prompt = f"""
+User question: {req.question}
+
+Document context:
+{context if context else "No relevant document found."}
+"""
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ]
+        )
+
+        return {
+            "answer": response.choices[0].message.content,
+            "sources": docs
+        }
+
+    except Exception as e:
+        return {
+            "answer": f"Error: {str(e)}",
+            "sources": docs
+        }

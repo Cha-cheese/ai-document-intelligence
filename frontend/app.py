@@ -1,6 +1,5 @@
 import streamlit as st
 import requests
-import json
 import os
 
 API_URL = os.getenv(
@@ -8,7 +7,7 @@ API_URL = os.getenv(
     "https://ai-doc-backend-4dvz.onrender.com"
 )
 
-st.set_page_config(page_title="Ask Doc", layout="wide")
+st.set_page_config(page_title="AI Doc Chat", layout="wide")
 
 # =========================
 # STATE
@@ -23,7 +22,7 @@ if "messages" not in st.session_state:
     st.session_state.messages = []
 
 # =========================
-# UPLOAD SAFE (NO CRASH)
+# UPLOAD
 # =========================
 def upload(file):
 
@@ -53,28 +52,27 @@ def upload(file):
 # =========================
 def chat(question):
 
-    payload = {
-        "question": question
-    }
-
-    r = requests.post(f"{API_URL}/chat", json=payload)
+    r = requests.post(
+        f"{API_URL}/chat",
+        json={"question": question}
+    )
 
     try:
         data = r.json()
     except:
         st.error("Backend not responding")
-        return
+        return None
 
     if "error" in data:
         st.error(data["error"])
-        return
+        return None
 
     return data["answer"]
 
 # =========================
 # UI
 # =========================
-st.title("📄 Ask your document")
+st.title("📄 Chat with your document (ChatGPT style)")
 
 file = st.file_uploader("Upload PDF")
 
@@ -82,17 +80,18 @@ if file:
     upload(file)
 
 if st.session_state.profile:
-    st.write("✅ Ready:", st.session_state.filename)
+    st.success(f"Loaded: {st.session_state.filename}")
 
-    q = st.chat_input("Ask something about document")
+    q = st.chat_input("Ask anything...")
 
     if q:
         st.session_state.messages.append(("user", q))
 
         answer = chat(q)
 
-        st.session_state.messages.append(("assistant", answer))
+        if answer:
+            st.session_state.messages.append(("assistant", answer))
 
-        for role, msg in st.session_state.messages:
-            with st.chat_message(role):
-                st.write(msg)
+    for role, msg in st.session_state.messages:
+        with st.chat_message(role):
+            st.write(msg)
