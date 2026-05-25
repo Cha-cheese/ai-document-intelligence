@@ -6,10 +6,17 @@ import requests
 import streamlit as st
 
 
-API_URL = os.getenv("API_URL", "https://ai-doc-backend-4dvz.onrender.com")
+API_URL = os.getenv(
+    "API_URL",
+    "https://ai-doc-backend-4dvz.onrender.com"
+)
+
 DEFAULT_MODE = "Analyze"
 
 
+# =========================================
+# PAGE CONFIG
+# =========================================
 st.set_page_config(
     page_title="Ask My Document",
     page_icon="AI",
@@ -18,6 +25,9 @@ st.set_page_config(
 )
 
 
+# =========================================
+# CSS
+# =========================================
 st.markdown("""
 <style>
 :root {
@@ -28,7 +38,6 @@ st.markdown("""
     --line: #e2e8f0;
     --blue: #2563eb;
     --blue-dark: #1d4ed8;
-    --blue-soft: #eff6ff;
     --green: #15803d;
     --green-soft: #ecfdf5;
 }
@@ -55,243 +64,97 @@ footer,
     padding: 3rem 1.25rem 7rem;
 }
 
-h1, h2, h3, p {
-    letter-spacing: 0;
-}
-
-.hero {
-    margin-bottom: 1.2rem;
-}
-
 .hero h1 {
     color: var(--ink);
-    font-size: 2.15rem;
-    line-height: 1.12;
-    font-weight: 820;
-    margin: 0;
+    font-size: 2.1rem;
+    font-weight: 800;
+    margin-bottom: 0.5rem;
 }
 
 .hero p {
     color: var(--muted);
-    font-size: 1.02rem;
-    margin: 0.55rem 0 0;
-    max-width: 720px;
 }
 
 .card {
-    background: var(--card);
+    background: white;
     border: 1px solid var(--line);
     border-radius: 14px;
-    padding: 1.15rem;
-    box-shadow: 0 16px 44px rgba(15, 23, 42, 0.06);
-}
-
-.upload-card {
-    margin: 1rem 0;
-}
-
-.card-title {
-    color: var(--ink);
-    font-size: 1.05rem;
-    font-weight: 760;
-    margin-bottom: 0.25rem;
-}
-
-.card-copy {
-    color: var(--muted);
-    font-size: 0.94rem;
-    margin-bottom: 0.8rem;
-}
-
-[data-testid="stFileUploader"] {
-    background: #f8fafc;
-    border: 1px dashed #cbd5e1;
-    border-radius: 12px;
-    padding: 0.75rem;
-}
-
-[data-testid="stFileUploader"] button {
-    background: var(--blue);
-    color: #ffffff;
-    border: 1px solid var(--blue-dark);
-    border-radius: 9px;
-    font-weight: 720;
-}
-
-[data-testid="stFileUploader"] button:hover {
-    background: var(--blue-dark);
-    color: #ffffff;
-}
-
-[data-testid="stFileUploader"] button *,
-[data-testid="stFileUploader"] button p,
-[data-testid="stFileUploader"] button span {
-    color: #ffffff;
-}
-
-[data-testid="stFileUploader"] small,
-[data-testid="stFileUploader"] span,
-[data-testid="stFileUploader"] p {
-    color: var(--muted);
-}
-
-.doc-card {
-    display: flex;
-    justify-content: space-between;
-    gap: 1rem;
-    align-items: flex-start;
-    margin: 1rem 0;
+    padding: 1rem;
+    margin-bottom: 1rem;
 }
 
 .doc-name {
-    color: var(--ink);
+    font-weight: 700;
     font-size: 1rem;
-    font-weight: 760;
-    word-break: break-word;
 }
 
 .doc-meta {
     color: var(--muted);
-    font-size: 0.9rem;
-    margin-top: 0.22rem;
-}
-
-.ready {
-    color: var(--green);
-    background: var(--green-soft);
-    border: 1px solid #bbf7d0;
-    border-radius: 999px;
-    padding: 0.28rem 0.6rem;
-    font-size: 0.82rem;
-    font-weight: 720;
-    white-space: nowrap;
-}
-
-.quick-title {
-    color: var(--muted);
-    font-size: 0.85rem;
-    font-weight: 720;
-    margin: 1rem 0 0.45rem;
-}
-
-div.stButton > button {
-    background: #ffffff;
-    color: var(--ink);
-    border: 1px solid var(--line);
-    border-radius: 10px;
-    min-height: 2.6rem;
-    font-weight: 650;
-}
-
-div.stButton > button:hover {
-    border-color: #93c5fd;
-    color: var(--blue-dark);
-}
-
-.stChatMessage {
-    background: #ffffff;
-    border: 1px solid var(--line);
-    border-radius: 14px;
-    box-shadow: 0 10px 26px rgba(15, 23, 42, 0.045);
-}
-
-.stChatMessage,
-.stChatMessage *,
-[data-testid="stChatMessage"],
-[data-testid="stChatMessage"] * {
-    color: var(--ink);
-}
-
-.stChatMessage p,
-[data-testid="stMarkdownContainer"] p,
-[data-testid="stMarkdownContainer"] li {
-    color: var(--ink);
-}
-
-.empty-chat {
-    background: #ffffff;
-    border: 1px solid var(--line);
-    border-radius: 14px;
-    padding: 1rem;
-    color: var(--muted);
-    margin-top: 1rem;
-}
-
-[data-testid="stChatInput"] {
-    background: #f7f8fb;
-    border-top: 1px solid var(--line);
-}
-
-[data-testid="stChatInput"] textarea {
-    color: var(--ink);
-    background: #ffffff;
-}
-
-[data-testid="stChatInput"] textarea::placeholder {
-    color: #6b7280;
-    opacity: 1;
-}
-
-[data-testid="stChatInput"] button {
-    background: var(--blue);
-    color: #ffffff;
-}
-
-[data-testid="stChatInput"] button * {
-    color: #ffffff;
-}
-
-[data-testid="stBottomBlockContainer"],
-[data-testid="stBottom"] {
-    background: #f7f8fb;
-}
-
-.small-action {
     margin-top: 0.3rem;
 }
 
-@media (max-width: 760px) {
-    .hero h1 {
-        font-size: 1.72rem;
-    }
+.ready {
+    margin-top: 0.7rem;
+    color: var(--green);
+    background: var(--green-soft);
+    padding: 0.35rem 0.7rem;
+    border-radius: 999px;
+    display: inline-block;
+    font-weight: 700;
+}
 
-    .doc-card {
-        display: block;
-    }
+.stChatMessage {
+    border-radius: 14px;
+}
 
-    .ready {
-        display: inline-block;
-        margin-top: 0.65rem;
-    }
+.empty-chat {
+    background: white;
+    border: 1px solid var(--line);
+    padding: 1rem;
+    border-radius: 14px;
+    color: var(--muted);
 }
 </style>
 """, unsafe_allow_html=True)
 
 
+# =========================================
+# SESSION STATE
+# =========================================
 def init_state():
+
     defaults = {
         "messages": [],
         "profile": None,
         "filename": None,
         "chunks": 0,
-        "pending_question": None
+        "pending_question": None,
+        "uploaded_once": False
     }
 
     for key, value in defaults.items():
+
         if key not in st.session_state:
             st.session_state[key] = value
 
 
+# =========================================
+# HISTORY
+# =========================================
 def history_payload():
+
     return [
         {
-            "role": message["role"],
-            "content": message["content"]
+            "role": m["role"],
+            "content": m["content"]
         }
-        for message in st.session_state.messages[-10:]
+        for m in st.session_state.messages[-10:]
     ]
 
 
+# =========================================
+# STREAM CHAT
+# =========================================
 def stream_chat(question):
 
     payload = {
@@ -300,163 +163,253 @@ def stream_chat(question):
         "history": history_payload()
     }
 
-    response = requests.post(
-        f"{API_URL}/chat",
+    answer = ""
+
+    with requests.post(
+        f"{API_URL}/chat/stream",
         json=payload,
+        stream=True,
         timeout=180
-    )
+    ) as response:
 
-    response.raise_for_status()
+        response.raise_for_status()
 
-    data = response.json()
+        current_event = None
 
-    answer = data.get("answer", "")
+        for line in response.iter_lines(decode_unicode=True):
 
-    if not answer:
-        answer = "No answer generated."
+            if not line:
+                continue
 
-    yield answer, True
+            if line.startswith("event: "):
+                current_event = line.replace(
+                    "event: ",
+                    "",
+                    1
+                )
+                continue
+
+            if not line.startswith("data: "):
+                continue
+
+            data = json.loads(
+                line.replace("data: ", "", 1)
+            )
+
+            if current_event == "token":
+
+                answer += data
+                yield answer, False
+
+            elif current_event == "error":
+
+                yield data.get(
+                    "message",
+                    "AI processing error occurred."
+                ), True
+
+            elif current_event == "done":
+
+                yield answer, True
 
 
+# =========================================
+# UPLOAD DOCUMENT
+# =========================================
 def upload_document(uploaded_file):
-    with st.spinner("Reading and indexing your document..."):
+
+    with st.spinner("Reading document..."):
+
         response = requests.post(
             f"{API_URL}/upload",
             files={"file": uploaded_file},
             timeout=180
         )
+
         response.raise_for_status()
+
         data = response.json()
+
+    if "error" in data:
+        raise Exception(data["error"])
 
     st.session_state.filename = data.get("filename")
     st.session_state.chunks = data.get("chunks", 0)
-    st.session_state.profile = data.get("profile", {})
+    st.session_state.profile = data.get("profile")
     st.session_state.messages = []
+    st.session_state.uploaded_once = True
 
 
+# =========================================
+# HEADER
+# =========================================
 def render_header():
+
     st.markdown("""
     <div class="hero">
         <h1>Ask questions about your document</h1>
-        <p>Upload a PDF and get clear, useful answers. The assistant keeps track of the conversation, so follow-up questions work naturally.</p>
+        <p>
+            Upload a PDF and ask anything about it.
+        </p>
     </div>
     """, unsafe_allow_html=True)
 
 
+# =========================================
+# UPLOAD UI
+# =========================================
 def render_upload():
+
     st.markdown("""
-    <div class="card upload-card">
-        <div class="card-title">Upload your PDF</div>
-        <div class="card-copy">Resume, report, contract, notes, or research paper. PDF only.</div>
+    <div class="card">
+        <h3>Upload PDF</h3>
+        <p>Resume, report, contract, notes, research paper.</p>
     </div>
     """, unsafe_allow_html=True)
 
     uploaded_file = st.file_uploader(
         "Upload PDF",
         type=["pdf"],
-        label_visibility="collapsed"
+        label_visibility="collapsed",
+        key="main_uploader"
     )
 
-    if uploaded_file and uploaded_file.name != st.session_state.filename:
-        try:
-            upload_document(uploaded_file)
-            st.success("Document is ready. You can ask a question now.")
-        except Exception as error:
-            st.error(f"Could not connect to the backend: {error}")
+    if uploaded_file is not None:
+
+        if (
+            st.session_state.filename != uploaded_file.name
+            or st.session_state.profile is None
+        ):
+
+            try:
+
+                upload_document(uploaded_file)
+
+                st.success(
+                    "Document is ready. You can ask a question now."
+                )
+
+                st.rerun()
+
+            except Exception as error:
+
+                st.error(f"Upload failed: {error}")
 
 
+# =========================================
+# DOCUMENT SUMMARY
+# =========================================
 def render_document_summary():
+
     profile = st.session_state.profile
 
     if not profile:
         return
 
-    filename = st.session_state.filename or "Current document"
-    document_type = profile.get("document_type", "Document")
+    filename = st.session_state.filename
+
     word_count = profile.get("word_count", 0)
-    read_time = profile.get("reading_time_minutes", 1)
+
+    reading_time = profile.get(
+        "reading_time_minutes",
+        1
+    )
+
+    document_type = profile.get(
+        "document_type",
+        "Document"
+    )
 
     st.markdown(f"""
-    <div class="card doc-card">
-        <div>
-            <div class="doc-name">{html.escape(filename)}</div>
-            <div class="doc-meta">{html.escape(document_type)} · {word_count} words · about {read_time} min read</div>
+    <div class="card">
+        <div class="doc-name">
+            {html.escape(filename)}
         </div>
-        <div class="ready">Ready</div>
+
+        <div class="doc-meta">
+            {html.escape(document_type)}
+            · {word_count} words
+            · {reading_time} min read
+        </div>
+
+        <div class="ready">
+            Ready
+        </div>
     </div>
     """, unsafe_allow_html=True)
 
-    with st.expander("Use another document"):
-        uploaded_file = st.file_uploader("Upload a new PDF", type=["pdf"])
 
-        if uploaded_file and uploaded_file.name != st.session_state.filename:
-            try:
-                upload_document(uploaded_file)
-                st.rerun()
-            except Exception as error:
-                st.error(f"Could not connect to the backend: {error}")
-
-
-def render_quick_questions():
-    if not st.session_state.profile:
-        return
-
-    st.markdown("<div class='quick-title'>Suggested questions</div>", unsafe_allow_html=True)
-
-    prompts = [
-        "Summarize this document",
-        "What are the key points?",
-        "What should I focus on?",
-        "What are the risks or gaps?"
-    ]
-    columns = st.columns(4)
-
-    for column, prompt in zip(columns, prompts):
-        with column:
-            if st.button(prompt, use_container_width=True):
-                st.session_state.pending_question = prompt
-                st.rerun()
-
-
+# =========================================
+# CHAT HISTORY
+# =========================================
 def render_chat_history():
+
     if not st.session_state.messages:
+
         st.markdown("""
         <div class="empty-chat">
-            Your answers will appear here. Try asking for a summary, strengths, gaps, or next steps.
+            Your answers will appear here.
         </div>
         """, unsafe_allow_html=True)
+
         return
 
     for message in st.session_state.messages:
+
         with st.chat_message(message["role"]):
+
             st.markdown(message["content"])
 
 
+# =========================================
+# ANSWER QUESTION
+# =========================================
 def answer_question(question):
+
+    if not st.session_state.profile:
+
+        st.error("No document uploaded yet.")
+
+        return
+
     st.session_state.messages.append({
         "role": "user",
         "content": question
     })
 
     with st.chat_message("user"):
+
         st.markdown(question)
 
     with st.chat_message("assistant"):
+
         answer_placeholder = st.empty()
+
         final_answer = ""
 
         try:
+
             for partial_answer, done in stream_chat(question):
+
                 final_answer = partial_answer
-                answer_placeholder.markdown(f"{final_answer}_")
+
+                answer_placeholder.markdown(
+                    final_answer + "▌"
+                )
 
                 if done:
                     break
 
-            answer_placeholder.markdown(final_answer or "No answer generated.")
+            if not final_answer.strip():
+
+                final_answer = "No answer generated."
+
+            answer_placeholder.markdown(final_answer)
 
         except Exception as error:
+
             final_answer = f"Error: {error}"
+
             answer_placeholder.error(final_answer)
 
     st.session_state.messages.append({
@@ -465,32 +418,40 @@ def answer_question(question):
     })
 
 
+# =========================================
+# APP
+# =========================================
 init_state()
+
 render_header()
 
+# DEBUG
+st.write(
+    "DEBUG PROFILE:",
+    st.session_state.profile
+)
+
 if st.session_state.profile:
+
     render_document_summary()
 
-    if st.button("Clear chat", use_container_width=False):
+    if st.button("Clear chat"):
+
         st.session_state.messages = []
+
         st.rerun()
 
-    render_quick_questions()
 else:
+
     render_upload()
 
 render_chat_history()
 
 question = st.chat_input(
     "Ask anything about the document...",
-    disabled=False
+    disabled=not st.session_state.profile
 )
 
-if st.session_state.pending_question:
-    queued_question = st.session_state.pending_question
-    st.session_state.pending_question = None
-    answer_question(queued_question)
-
 if question:
-    st.session_state.pending_question = question
-    st.rerun()
+
+    answer_question(question)
