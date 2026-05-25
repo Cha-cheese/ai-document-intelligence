@@ -1,27 +1,38 @@
 from fastapi import FastAPI, UploadFile, File
 from pydantic import BaseModel
 import os
+import json
 
 app = FastAPI()
 
-# =========================
-# GLOBAL MEMORY (ต้องอยู่ระดับนี้เท่านั้น)
-# =========================
-VECTOR_STORE = {
-    "texts": [],
-    "vectors": []
-}
+DATA_PATH = "data_store.json"
 
 
 # =========================
-# MODELS
+# LOAD / SAVE MEMORY
+# =========================
+def load_store():
+    if not os.path.exists(DATA_PATH):
+        return {"texts": [], "vectors": []}
+
+    with open(DATA_PATH, "r") as f:
+        return json.load(f)
+
+
+def save_store(store):
+    with open(DATA_PATH, "w") as f:
+        json.dump(store, f)
+
+
+# =========================
+# REQUEST
 # =========================
 class QuestionRequest(BaseModel):
     question: str
 
 
 # =========================
-# ROOT DEBUG
+# ROOT
 # =========================
 @app.get("/")
 def root():
@@ -29,7 +40,7 @@ def root():
 
 
 # =========================
-# UPLOAD
+# UPLOAD (PERSISTENT FIX)
 # =========================
 @app.post("/upload")
 async def upload(file: UploadFile = File(...)):
@@ -50,11 +61,14 @@ async def upload(file: UploadFile = File(...)):
         text = extract_text_from_pdf(path)
         chunks = chunk_text(text)
 
-        vectors = [get_embedding(c) for c in chunks]
+        vectors = [get_embedding(c).tolist() for c in chunks]
 
-        # 🔥 IMPORTANT FIX: overwrite global memory
-        VECTOR_STORE["texts"] = chunks
-        VECTOR_STORE["vectors"] = vectors
+        store = {
+            "texts": chunks,
+            "vectors": vectors
+        }
+
+        save_store(store)
 
         return {
             "ok": True,
@@ -71,17 +85,19 @@ async def upload(file: UploadFile = File(...)):
 
 
 # =========================
-# CHAT
+# CHAT (LOAD FROM DISK)
 # =========================
 @app.post("/chat")
 def chat(req: QuestionRequest):
 
     try:
+        import numpy as np
         from rag.embeddings import get_embedding
         from rag.llm import ask_llm
-        import numpy as np
 
-        if not VECTOR_STORE["vectors"]:
+        store = load_store()
+
+        if not store["texts"]:
             return {
                 "answer": "Please upload a document first.",
                 "sources": []
@@ -90,14 +106,15 @@ def chat(req: QuestionRequest):
         q_vec = np.array(get_embedding(req.question))
 
         scores = []
-        for i, v in enumerate(VECTOR_STORE["vectors"]):
+
+        for i, v in enumerate(store["vectors"]):
             v = np.array(v)
             score = np.dot(q_vec, v)
             scores.append((score, i))
 
         scores.sort(reverse=True)
 
-        docs = [VECTOR_STORE["texts"][i] for _, i in scores[:5]]
+        docs = [store["texts"][i] for _, i in scores[:5]]
 
         context = "\n".join(docs)
 
