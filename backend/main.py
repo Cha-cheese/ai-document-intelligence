@@ -155,3 +155,10 @@ async def chat_stream(request: QuestionRequest):
         fake_stream(),
         media_type="text/event-stream"
     )
+
+    return StreamingResponse(
+        fake_stream(),
+        media_type="text/event-stream"
+    )
+
+print("MAIN.PY STARTED SUCCESSFULLY")
