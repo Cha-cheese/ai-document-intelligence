@@ -1,5 +1,14 @@
 import numpy as np
-def add(self, embeddings, chunks):
+import faiss
+
+
+class VectorStore:
+
+    def __init__(self):
+        self.index = None
+        self.documents = []
+
+    def add(self, embeddings, chunks):
 
         embeddings = np.array(
             embeddings,
@@ -19,7 +28,7 @@ def add(self, embeddings, chunks):
         for chunk in chunks:
             self.documents.append(chunk)
 
-def search(self, query_embedding, top_k=5):
+    def search(self, query_embedding, top_k=5):
 
         if self.index is None:
             return []
@@ -39,7 +48,10 @@ def search(self, query_embedding, top_k=5):
 
         results = []
 
-        for score, idx in zip(distances[0], indices[0]):
+        for score, idx in zip(
+            distances[0],
+            indices[0]
+        ):
 
             if idx >= len(self.documents):
                 continue
