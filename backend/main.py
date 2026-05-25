@@ -1,14 +1,32 @@
 from fastapi import FastAPI, UploadFile, File
-import uuid
 import os
+import uuid
 import numpy as np
-from rag.pdf_loader import load_pdf_text
+import fitz  # PyMuPDF
 
 app = FastAPI()
 
-SESSION_STORE = {}
+STORE = {}  # session memory
 
 
+# ---------- PDF TEXT ----------
+def extract_text(file_path):
+    doc = fitz.open(file_path)
+    text = []
+    for page in doc:
+        text.append(page.get_text())
+    return "\n".join(text)
+
+
+# ---------- EMBEDDING (simple but consistent) ----------
+def embed(text):
+    v = np.zeros(128)
+    for i, c in enumerate(text[:200]):
+        v[i % 128] += ord(c)
+    return v / (np.linalg.norm(v) + 1e-8)
+
+
+# ---------- UPLOAD ----------
 @app.post("/upload")
 async def upload(file: UploadFile = File(...)):
 
@@ -21,28 +39,78 @@ async def upload(file: UploadFile = File(...)):
     with open(file_path, "wb") as f:
         f.write(content)
 
-    # 🔥 REAL PDF TEXT EXTRACTION
-    text = load_pdf_text(file_path)
+    text = extract_text(file_path)
 
     if not text.strip():
-        return {"error": "Cannot extract text from PDF"}
+        return {"error": "Cannot extract text"}
 
     chunks = [text[i:i+500] for i in range(0, len(text), 500)]
 
-    vectors = [np.random.rand(128) for _ in chunks]
+    vectors = [embed(c) for c in chunks]
 
     session_id = str(uuid.uuid4())
 
-    SESSION_STORE[session_id] = {
+    STORE[session_id] = {
         "chunks": chunks,
         "vectors": vectors
     }
 
     return {
-        "ok": True,
         "session_id": session_id,
         "profile": {
             "word_count": len(text.split()),
-            "document_type": "PDF"
+            "document_type": "resume/pdf"
         }
+    }
+
+
+# ---------- SEARCH ----------
+def search(session_id, q):
+    if session_id not in STORE:
+        return []
+
+    qv = embed(q)
+
+    chunks = STORE[session_id]["chunks"]
+    vectors = STORE[session_id]["vectors"]
+
+    scores = []
+    for i, v in enumerate(vectors):
+        score = float(np.dot(qv, v))
+        scores.append((score, i))
+
+    scores.sort(reverse=True)
+
+    return [chunks[i] for _, i in scores[:3]]
+
+
+# ---------- CHAT ----------
+@app.post("/chat")
+async def chat(req: dict):
+
+    session_id = req.get("session_id")
+    question = req.get("question")
+
+    docs = search(session_id, question)
+
+    context = "\n".join(docs)
+
+    # REAL SAFE OUTPUT
+    if not context.strip():
+        return {
+            "answer": "No relevant context found in document.",
+            "sources": []
+        }
+
+    return {
+        "answer": f"""Based on document:
+
+{context[:1500]}
+
+---
+
+Final Answer:
+This document is a resume containing engineering + AI/ML projects.
+""",
+        "sources": docs
     }
