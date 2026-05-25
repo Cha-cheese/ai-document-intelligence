@@ -10,7 +10,7 @@ if "messages" not in st.session_state:
     st.session_state.messages = []
 
 
-st.title("📄 RAG Chat")
+st.title("📄 RAG Chat System")
 
 
 # =========================
@@ -29,9 +29,9 @@ if file:
 
     if data.get("ok"):
 
-        st.session_state.session_id = data["session_id"]
+        st.session_state.session_id = data["session_id"]   # 🔥 IMPORTANT FIX
 
-        st.success("Uploaded")
+        st.success("Uploaded successfully!")
 
 
 # =========================
@@ -43,11 +43,15 @@ for m in st.session_state.messages:
 
 
 # =========================
-# CHAT INPUT (ALWAYS ON)
+# CHAT INPUT (ALWAYS SHOW)
 # =========================
-q = st.chat_input("Ask anything")
+q = st.chat_input("Ask anything about your document")
 
 if q:
+
+    if not st.session_state.session_id:
+        st.error("Please upload a document first.")
+        st.stop()
 
     st.session_state.messages.append({"role": "user", "content": q})
 
@@ -59,7 +63,7 @@ if q:
         }
     )
 
-    answer = r.json().get("answer")
+    answer = r.json().get("answer", "error")
 
     st.session_state.messages.append({"role": "assistant", "content": answer})
 

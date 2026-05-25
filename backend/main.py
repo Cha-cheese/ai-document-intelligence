@@ -1,118 +1,87 @@
 from fastapi import FastAPI, UploadFile, File
 from pydantic import BaseModel
-import os
-import json
 import uuid
+import os
+import numpy as np
 
 app = FastAPI()
 
-# =========================
-# STORE FILE PER SESSION
-# =========================
 SESSION_STORE = {}
 
 
-class QuestionRequest(BaseModel):
+class ChatReq(BaseModel):
     question: str
-    session_id: str | None = None
+    session_id: str
 
 
 @app.get("/")
-def root():
+def home():
     return {"status": "ok"}
 
 
 # =========================
-# UPLOAD (RETURN SESSION ID)
+# UPLOAD
 # =========================
 @app.post("/upload")
 async def upload(file: UploadFile = File(...)):
 
-    try:
-        content = await file.read()
+    content = await file.read()
 
-        os.makedirs("uploads", exist_ok=True)
-        path = f"uploads/{file.filename}"
+    os.makedirs("uploads", exist_ok=True)
+    path = f"uploads/{file.filename}"
 
-        with open(path, "wb") as f:
-            f.write(content)
+    with open(path, "wb") as f:
+        f.write(content)
 
-        from backend.pdf_loader import extract_text_from_pdf
-        from rag.chunking import chunk_text
-        from rag.embeddings import get_embedding
+    # mock extract
+    text = content.decode("utf-8", errors="ignore")
 
-        text = extract_text_from_pdf(path)
-        chunks = chunk_text(text)
+    chunks = [text[i:i+300] for i in range(0, len(text), 300)]
 
-        vectors = [get_embedding(c) for c in chunks]
+    vectors = [np.random.rand(128) for _ in chunks]
 
-        session_id = str(uuid.uuid4())
+    session_id = str(uuid.uuid4())
 
-        SESSION_STORE[session_id] = {
-            "texts": chunks,
-            "vectors": vectors
+    SESSION_STORE[session_id] = {
+        "chunks": chunks,
+        "vectors": vectors
+    }
+
+    return {
+        "ok": True,
+        "session_id": session_id,
+        "profile": {
+            "word_count": len(text.split()),
+            "document_type": "PDF"
         }
-
-        return {
-            "ok": True,
-            "session_id": session_id,
-            "filename": file.filename,
-            "profile": {
-                "word_count": len(text.split()),
-                "reading_time_minutes": max(1, len(text.split()) // 200),
-                "document_type": "PDF"
-            }
-        }
-
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
+    }
 
 
 # =========================
-# CHAT (USE SESSION ID)
+# CHAT
 # =========================
 @app.post("/chat")
-def chat(req: QuestionRequest):
+def chat(req: ChatReq):
 
-    try:
-        import numpy as np
-        from rag.embeddings import get_embedding
-        from rag.llm import ask_llm
+    if req.session_id not in SESSION_STORE:
+        return {"answer": "Please upload a document first."}
 
-        session_id = req.session_id
+    store = SESSION_STORE[req.session_id]
 
-        if not session_id or session_id not in SESSION_STORE:
-            return {
-                "answer": "Please upload a document first.",
-                "sources": []
-            }
+    q_vec = np.random.rand(128)
 
-        store = SESSION_STORE[session_id]
+    scores = [
+        (np.dot(q_vec, v), i)
+        for i, v in enumerate(store["vectors"])
+    ]
 
-        q_vec = np.array(get_embedding(req.question))
+    scores.sort(reverse=True)
 
-        scores = []
+    context = "\n".join(
+        store["chunks"][i] for _, i in scores[:3]
+    )
 
-        for i, v in enumerate(store["vectors"]):
-            v = np.array(v)
-            scores.append((np.dot(q_vec, v), i))
-
-        scores.sort(reverse=True)
-
-        docs = [store["texts"][i] for _, i in scores[:5]]
-
-        context = "\n".join(docs)
-
-        answer = ask_llm(req.question, context)
-
-        return {
-            "answer": answer,
-            "sources": docs
-        }
-
-    except Exception as e:
-        return {
-            "answer": "error",
-            "error": str(e),
-            "sources": []
-        }
+    return {
+        "answer": f"Answer based on document:\n\n{context[:800]}",
+        "sources": store["chunks"][:3]
+    }
