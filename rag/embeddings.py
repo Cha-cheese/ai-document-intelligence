@@ -1,7 +1,12 @@
+from sentence_transformers import SentenceTransformer
 import os
-import openai
 
-openai.api_key = os.getenv("OPENAI_API_KEY")
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
+# โหลดครั้งเดียว
+model = SentenceTransformer(
+    "sentence-transformers/all-MiniLM-L6-v2"
+)
 
 
 def get_embedding(texts):
@@ -9,12 +14,9 @@ def get_embedding(texts):
     if isinstance(texts, str):
         texts = [texts]
 
-    response = openai.Embedding.create(
-        model="text-embedding-3-small",
-        input=texts
+    embeddings = model.encode(
+        texts,
+        normalize_embeddings=True
     )
 
-    return [
-        item["embedding"]
-        for item in response["data"]
-    ]
+    return embeddings.tolist()
