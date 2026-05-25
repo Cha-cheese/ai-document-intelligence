@@ -3,11 +3,7 @@ import requests
 
 HF_TOKEN = os.getenv("HF_TOKEN")
 
-API_URL = (
-    "https://api-inference.huggingface.co/"
-    "pipeline/feature-extraction/"
-    "sentence-transformers/all-MiniLM-L6-v2"
-)
+API_URL = "https://api-inference.huggingface.co/pipeline/feature-extraction/sentence-transformers/all-MiniLM-L6-v2"
 
 headers = {
     "Authorization": f"Bearer {HF_TOKEN}"
@@ -28,7 +24,7 @@ def get_embedding(texts):
                 "wait_for_model": True
             }
         },
-        timeout=120
+        timeout=60
     )
 
     response.raise_for_status()
