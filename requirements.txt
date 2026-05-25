@@ -2,10 +2,9 @@ fastapi
 uvicorn
 python-multipart
 pymupdf
-streamlit
-requests
-groq
 numpy
 openai==0.28.0
-sentence-transformers==2.7.0
-faiss-cpu
+scikit-learn
+requests
+streamlit
+groq
