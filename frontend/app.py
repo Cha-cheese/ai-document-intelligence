@@ -1,101 +1,108 @@
 import streamlit as st
 import requests
-import json
 
 API = "https://ai-doc-backend-4dvz.onrender.com"
 
 # =========================
-# INIT STATE
+# STATE INIT
 # =========================
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+
 if "profile" not in st.session_state:
     st.session_state.profile = None
 
 if "filename" not in st.session_state:
     st.session_state.filename = None
 
-if "messages" not in st.session_state:
-    st.session_state.messages = []
+
+# =========================
+# UI HEADER
+# =========================
+st.title("📄 AI Document Chat (RAG)")
+
+st.caption("Upload document and chat like ChatGPT")
 
 
 # =========================
-# UPLOAD
+# SIDEBAR UPLOAD (เหมือน ChatGPT attach file)
 # =========================
-def upload(file):
+with st.sidebar:
+    st.header("📎 Upload Document")
 
-    r = requests.post(
-        f"{API}/upload",
-        files={"file": file}
-    )
+    file = st.file_uploader("PDF only", type=["pdf"])
 
-    if r.status_code != 200:
-        st.error(r.text)
-        return
+    if file:
 
-    data = r.json()
+        with st.spinner("Uploading..."):
 
-    # 🔥 IMPORTANT FIX: set state BEFORE rerun
-    st.session_state.profile = data.get("profile")
-    st.session_state.filename = data.get("filename")
+            r = requests.post(
+                f"{API}/upload",
+                files={"file": file}
+            )
 
-    st.success("Uploaded successfully")
-    st.rerun()
+        if r.status_code == 200:
+            data = r.json()
+
+            st.session_state.profile = data.get("profile")
+            st.session_state.filename = data.get("filename")
+
+            st.success("Document loaded")
+        else:
+            st.error(r.text)
 
 
-# =========================
-# CHAT
-# =========================
-def chat(question):
-
-    r = requests.post(
-        f"{API}/chat",
-        json={"question": question}
-    )
-
-    if r.status_code != 200:
-        return "Error from server"
-
-    return r.json().get("answer", "No answer")
+    if st.session_state.profile:
+        st.divider()
+        st.write("📄", st.session_state.filename)
+        st.write("Words:", st.session_state.profile.get("word_count"))
 
 
 # =========================
-# UI
+# CHAT DISPLAY
 # =========================
-st.title("📄 RAG Document Q&A")
+for msg in st.session_state.messages:
 
-# -------------------------
-# UPLOAD SECTION
-# -------------------------
-file = st.file_uploader("Upload PDF")
+    with st.chat_message(msg["role"]):
+        st.write(msg["content"])
 
-if file and st.session_state.profile is None:
-    upload(file)
 
-# -------------------------
-# SHOW DOC STATUS
-# -------------------------
-if st.session_state.profile:
+# =========================
+# CHAT INPUT (ALWAYS VISIBLE - FIX สำคัญ)
+# =========================
+question = st.chat_input("Ask anything about your document...")
 
-    st.success(f"Document loaded: {st.session_state.filename}")
+if question:
 
-    st.write("Word count:", st.session_state.profile.get("word_count"))
+    # show user message
+    st.session_state.messages.append({
+        "role": "user",
+        "content": question
+    })
 
-    # -------------------------
-    # CHAT INPUT
-    # -------------------------
-    q = st.chat_input("Ask anything about your document")
+    with st.chat_message("user"):
+        st.write(question)
 
-    if q:
+    # call backend
+    try:
+        r = requests.post(
+            f"{API}/chat",
+            json={"question": question}
+        )
 
-        st.session_state.messages.append(("user", q))
+        if r.status_code == 200:
+            answer = r.json().get("answer")
 
-        answer = chat(q)
+        else:
+            answer = "Server error"
 
-        st.session_state.messages.append(("ai", answer))
+    except Exception as e:
+        answer = str(e)
 
-        for role, msg in st.session_state.messages:
+    st.session_state.messages.append({
+        "role": "assistant",
+        "content": answer
+    })
 
-            with st.chat_message(role):
-                st.write(msg)
-
-else:
-    st.warning("Please upload a document first.")
+    with st.chat_message("assistant"):
+        st.write(answer)
