@@ -1,12 +1,17 @@
-from sentence_transformers import SentenceTransformer
 import os
+import requests
 
-os.environ["TOKENIZERS_PARALLELISM"] = "false"
+HF_TOKEN = os.getenv("HF_TOKEN")
 
-# โหลดครั้งเดียว
-model = SentenceTransformer(
+API_URL = (
+    "https://api-inference.huggingface.co/"
+    "pipeline/feature-extraction/"
     "sentence-transformers/all-MiniLM-L6-v2"
 )
+
+headers = {
+    "Authorization": f"Bearer {HF_TOKEN}"
+}
 
 
 def get_embedding(texts):
@@ -14,9 +19,20 @@ def get_embedding(texts):
     if isinstance(texts, str):
         texts = [texts]
 
-    embeddings = model.encode(
-        texts,
-        normalize_embeddings=True
+    response = requests.post(
+        API_URL,
+        headers=headers,
+        json={
+            "inputs": texts,
+            "options": {
+                "wait_for_model": True
+            }
+        },
+        timeout=120
     )
 
-    return embeddings.tolist()
+    response.raise_for_status()
+
+    embeddings = response.json()
+
+    return embeddings

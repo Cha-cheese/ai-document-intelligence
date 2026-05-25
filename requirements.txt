@@ -3,10 +3,8 @@ uvicorn
 python-multipart
 pymupdf
 numpy
-sentence-transformers
-transformers
-torch
 faiss-cpu
 groq
 requests
 streamlit
+aiohttp
