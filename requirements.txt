@@ -1,9 +1,9 @@
 fastapi
 uvicorn
-pydantic
-numpy
+pymupdf
 faiss-cpu
+sentence-transformers
+numpy
 python-multipart
 streamlit
 requests
-pymupdf

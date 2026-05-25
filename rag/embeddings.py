@@ -1,11 +1,8 @@
-import numpy as np
+from sentence_transformers import SentenceTransformer
 
-def get_embedding(text: str):
+model = SentenceTransformer("all-MiniLM-L6-v2")
 
-    vec = np.zeros(384)
-
-    for i, c in enumerate(text[:300]):
-        vec[i % 384] += ord(c)
-
-    norm = np.linalg.norm(vec) + 1e-8
-    return (vec / norm).astype("float32")
+def get_embedding(texts):
+    if isinstance(texts, str):
+        texts = [texts]
+    return model.encode(texts).tolist()

@@ -1,23 +1,10 @@
-import fitz
+import fitz  # PyMuPDF
 
+def load_pdf(file_bytes):
+    doc = fitz.open(stream=file_bytes, filetype="pdf")
+    text = ""
 
-def extract_text_from_pdf(pdf_path):
+    for page in doc:
+        text += page.get_text()
 
-    doc = fitz.open(pdf_path)
-
-    text = []
-
-    max_pages = min(len(doc), 15)
-
-    for page_num in range(max_pages):
-
-        page = doc.load_page(page_num)
-
-        page_text = page.get_text("text")
-
-        if page_text:
-            text.append(page_text)
-
-    doc.close()
-
-    return "\n".join(text)
+    return text

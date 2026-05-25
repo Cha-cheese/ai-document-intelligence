@@ -1,27 +1,22 @@
+import faiss
 import numpy as np
 
 class VectorStore:
-
-    def __init__(self):
-        self.vectors = []
+    def __init__(self, dim=384):
+        self.index = faiss.IndexFlatL2(dim)
         self.texts = []
 
     def add(self, vectors, texts):
-        self.vectors.extend(vectors)
+        self.index.add(np.array(vectors).astype("float32"))
         self.texts.extend(texts)
 
-    def search(self, query_vector, top_k=5):
-
-        if not self.vectors:
+    def search(self, vector, k=5):
+        if self.index.ntotal == 0:
             return []
 
-        scores = []
+        D, I = self.index.search(
+            np.array([vector]).astype("float32"),
+            k
+        )
 
-        for i, v in enumerate(self.vectors):
-            v = np.array(v)
-            score = np.dot(query_vector, v)
-            scores.append((score, i))
-
-        scores.sort(reverse=True)
-
-        return [self.texts[i] for _, i in scores[:top_k]]
+        return [self.texts[i] for i in I[0] if i < len(self.texts)]
