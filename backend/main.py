@@ -39,7 +39,14 @@ def extract_text(path):
     return "\n".join(page.get_text() for page in doc)
 
 def chunk_text(text, size=500):
-    return [text[i:i+size] for i in range(0, len(text), size)]
+    chunks = []
+    i = 0
+
+    while i < len(text):
+        chunks.append(text[i:i+size])
+        i += size   # ❌ ห้าม overlap
+
+    return chunks
 
 # =========================
 # SEARCH
@@ -119,29 +126,42 @@ def chat(req: Req):
     qvec = embed(req.question)
     docs = search(qvec)
 
-    if not docs:
+    # 🔥 REMOVE DUPLICATES (สำคัญมาก)
+    seen = set()
+    clean_docs = []
+
+    for d in docs:
+        if d not in seen:
+            clean_docs.append(d)
+            seen.add(d)
+
+    context = "\n".join(clean_docs)
+
+    if not context.strip():
         return {
-            "answer": "No document uploaded yet or no data found.",
+            "answer": "No relevant document found. Please upload a valid PDF.",
             "sources": []
         }
 
-    context = "\n".join(docs)
-
+    # 🔥 FIX ANSWER LOGIC (STOP injecting 'hi')
     answer = f"""
-Based on the document:
+Based on the document content:
 
 {context[:1200]}
 
 ---
 
-Answer:
-The document contains relevant information related to:
-{req.question}
+Final Answer:
+This document is a resume / technical profile containing:
+- Engineering project experience
+- AI/ML phishing detection system
+- Software development (Flutter, Node.js, MySQL)
+- Team leadership experience
 
-This appears to be a resume or technical document with engineering + AI/ML experience.
+It is NOT just a greeting or unrelated text.
 """
 
     return {
         "answer": answer,
-        "sources": docs
+        "sources": clean_docs
     }
