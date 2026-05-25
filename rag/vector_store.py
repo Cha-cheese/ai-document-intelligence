@@ -1,57 +1,53 @@
 import numpy as np
-from sklearn.metrics.pairwise import cosine_similarity
+def add(self, embeddings, chunks):
 
-
-class VectorStore:
-
-    def __init__(self):
-
-        self.embeddings = []
-        self.documents = []
-
-    def add(self, embeddings, documents):
-
-        for embedding, document in zip(
+        embeddings = np.array(
             embeddings,
-            documents
-        ):
+            dtype="float32"
+        )
 
-            self.embeddings.append(
-                np.array(embedding, dtype=np.float32)
-            )
+        if len(embeddings.shape) == 3:
+            embeddings = embeddings[:, 0, :]
 
-            self.documents.append(document)
+        dimension = embeddings.shape[1]
 
-    def search(self, query_embedding, top_k=3):
+        if self.index is None:
+            self.index = faiss.IndexFlatL2(dimension)
 
-        if len(self.embeddings) == 0:
+        self.index.add(embeddings)
+
+        for chunk in chunks:
+            self.documents.append(chunk)
+
+def search(self, query_embedding, top_k=5):
+
+        if self.index is None:
             return []
 
         query_embedding = np.array(
-            query_embedding,
-            dtype=np.float32
-        ).reshape(1, -1)
-
-        embeddings_matrix = np.array(
-            self.embeddings,
-            dtype=np.float32
+            [query_embedding],
+            dtype="float32"
         )
 
-        similarities = cosine_similarity(
-            query_embedding,
-            embeddings_matrix
-        )[0]
+        if len(query_embedding.shape) == 3:
+            query_embedding = query_embedding[:, 0, :]
 
-        top_indices = similarities.argsort()[-top_k:][::-1]
+        distances, indices = self.index.search(
+            query_embedding,
+            top_k
+        )
 
         results = []
 
-        for idx in top_indices:
+        for score, idx in zip(distances[0], indices[0]):
+
+            if idx >= len(self.documents):
+                continue
 
             results.append({
                 "content": self.documents[idx],
-                "score": float(similarities[idx]),
-                "source_id": idx + 1
+                "score": float(score),
+                "source_id": idx
             })
 
         return results

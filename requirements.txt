@@ -3,8 +3,7 @@ uvicorn
 python-multipart
 pymupdf
 numpy
-faiss-cpu
-groq
 requests
+openai==0.28.0
+faiss-cpu
 streamlit
-aiohttp
