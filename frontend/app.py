@@ -3,106 +3,64 @@ import requests
 
 API = "https://ai-doc-backend-4dvz.onrender.com"
 
-# =========================
-# STATE INIT
-# =========================
+if "session_id" not in st.session_state:
+    st.session_state.session_id = None
+
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-if "profile" not in st.session_state:
-    st.session_state.profile = None
 
-if "filename" not in st.session_state:
-    st.session_state.filename = None
+st.title("📄 RAG Chat")
 
 
 # =========================
-# UI HEADER
+# UPLOAD
 # =========================
-st.title("📄 AI Document Chat (RAG)")
+file = st.file_uploader("Upload PDF")
 
-st.caption("Upload document and chat like ChatGPT")
+if file:
 
+    r = requests.post(
+        f"{API}/upload",
+        files={"file": file}
+    )
 
-# =========================
-# SIDEBAR UPLOAD (เหมือน ChatGPT attach file)
-# =========================
-with st.sidebar:
-    st.header("📎 Upload Document")
+    data = r.json()
 
-    file = st.file_uploader("PDF only", type=["pdf"])
+    if data.get("ok"):
 
-    if file:
+        st.session_state.session_id = data["session_id"]
 
-        with st.spinner("Uploading..."):
-
-            r = requests.post(
-                f"{API}/upload",
-                files={"file": file}
-            )
-
-        if r.status_code == 200:
-            data = r.json()
-
-            st.session_state.profile = data.get("profile")
-            st.session_state.filename = data.get("filename")
-
-            st.success("Document loaded")
-        else:
-            st.error(r.text)
-
-
-    if st.session_state.profile:
-        st.divider()
-        st.write("📄", st.session_state.filename)
-        st.write("Words:", st.session_state.profile.get("word_count"))
+        st.success("Uploaded")
 
 
 # =========================
-# CHAT DISPLAY
+# CHAT HISTORY
 # =========================
-for msg in st.session_state.messages:
-
-    with st.chat_message(msg["role"]):
-        st.write(msg["content"])
+for m in st.session_state.messages:
+    with st.chat_message(m["role"]):
+        st.write(m["content"])
 
 
 # =========================
-# CHAT INPUT (ALWAYS VISIBLE - FIX สำคัญ)
+# CHAT INPUT (ALWAYS ON)
 # =========================
-question = st.chat_input("Ask anything about your document...")
+q = st.chat_input("Ask anything")
 
-if question:
+if q:
 
-    # show user message
-    st.session_state.messages.append({
-        "role": "user",
-        "content": question
-    })
+    st.session_state.messages.append({"role": "user", "content": q})
 
-    with st.chat_message("user"):
-        st.write(question)
+    r = requests.post(
+        f"{API}/chat",
+        json={
+            "question": q,
+            "session_id": st.session_state.session_id
+        }
+    )
 
-    # call backend
-    try:
-        r = requests.post(
-            f"{API}/chat",
-            json={"question": question}
-        )
+    answer = r.json().get("answer")
 
-        if r.status_code == 200:
-            answer = r.json().get("answer")
+    st.session_state.messages.append({"role": "assistant", "content": answer})
 
-        else:
-            answer = "Server error"
-
-    except Exception as e:
-        answer = str(e)
-
-    st.session_state.messages.append({
-        "role": "assistant",
-        "content": answer
-    })
-
-    with st.chat_message("assistant"):
-        st.write(answer)
+    st.rerun()

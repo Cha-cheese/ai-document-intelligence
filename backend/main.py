@@ -2,45 +2,28 @@ from fastapi import FastAPI, UploadFile, File
 from pydantic import BaseModel
 import os
 import json
+import uuid
 
 app = FastAPI()
 
-DATA_PATH = "data_store.json"
-
-
 # =========================
-# LOAD / SAVE MEMORY
+# STORE FILE PER SESSION
 # =========================
-def load_store():
-    if not os.path.exists(DATA_PATH):
-        return {"texts": [], "vectors": []}
-
-    with open(DATA_PATH, "r") as f:
-        return json.load(f)
+SESSION_STORE = {}
 
 
-def save_store(store):
-    with open(DATA_PATH, "w") as f:
-        json.dump(store, f)
-
-
-# =========================
-# REQUEST
-# =========================
 class QuestionRequest(BaseModel):
     question: str
+    session_id: str | None = None
 
 
-# =========================
-# ROOT
-# =========================
 @app.get("/")
 def root():
     return {"status": "ok"}
 
 
 # =========================
-# UPLOAD (PERSISTENT FIX)
+# UPLOAD (RETURN SESSION ID)
 # =========================
 @app.post("/upload")
 async def upload(file: UploadFile = File(...)):
@@ -61,17 +44,18 @@ async def upload(file: UploadFile = File(...)):
         text = extract_text_from_pdf(path)
         chunks = chunk_text(text)
 
-        vectors = [get_embedding(c).tolist() for c in chunks]
+        vectors = [get_embedding(c) for c in chunks]
 
-        store = {
+        session_id = str(uuid.uuid4())
+
+        SESSION_STORE[session_id] = {
             "texts": chunks,
             "vectors": vectors
         }
 
-        save_store(store)
-
         return {
             "ok": True,
+            "session_id": session_id,
             "filename": file.filename,
             "profile": {
                 "word_count": len(text.split()),
@@ -85,7 +69,7 @@ async def upload(file: UploadFile = File(...)):
 
 
 # =========================
-# CHAT (LOAD FROM DISK)
+# CHAT (USE SESSION ID)
 # =========================
 @app.post("/chat")
 def chat(req: QuestionRequest):
@@ -95,13 +79,15 @@ def chat(req: QuestionRequest):
         from rag.embeddings import get_embedding
         from rag.llm import ask_llm
 
-        store = load_store()
+        session_id = req.session_id
 
-        if not store["texts"]:
+        if not session_id or session_id not in SESSION_STORE:
             return {
                 "answer": "Please upload a document first.",
                 "sources": []
             }
+
+        store = SESSION_STORE[session_id]
 
         q_vec = np.array(get_embedding(req.question))
 
@@ -109,8 +95,7 @@ def chat(req: QuestionRequest):
 
         for i, v in enumerate(store["vectors"]):
             v = np.array(v)
-            score = np.dot(q_vec, v)
-            scores.append((score, i))
+            scores.append((np.dot(q_vec, v), i))
 
         scores.sort(reverse=True)
 
