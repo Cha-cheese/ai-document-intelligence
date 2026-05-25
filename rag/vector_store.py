@@ -7,39 +7,29 @@ class VectorStore:
         self.documents = []
 
     def add(self, embeddings, documents):
+        self.embeddings = [np.array(e, dtype=np.float32) for e in embeddings]
+        self.documents = documents
 
-        for emb in embeddings:
-            self.embeddings.append(np.array(emb, dtype=np.float32))
+    def search(self, query_embedding, top_k=3):
 
-        self.documents.extend(documents)
-
-    def search(self, query_embedding, top_k=5):
-
-        if len(self.embeddings) == 0:
+        if not self.embeddings:
             return []
 
-        query = np.array(query_embedding, dtype=np.float32)
+        q = np.array(query_embedding, dtype=np.float32)
 
         scores = []
 
-        for idx, emb in enumerate(self.embeddings):
-
-            score = np.dot(query, emb) / (
-                np.linalg.norm(query) * np.linalg.norm(emb)
-            )
-
-            scores.append((idx, float(score)))
+        for i, emb in enumerate(self.embeddings):
+            score = np.dot(q, emb) / (np.linalg.norm(q) * np.linalg.norm(emb))
+            scores.append((i, float(score)))
 
         scores.sort(key=lambda x: x[1], reverse=True)
 
-        results = []
-
-        for idx, score in scores[:top_k]:
-
-            results.append({
-                "content": self.documents[idx],
-                "score": round(score, 4),
-                "source_id": idx + 1
-            })
-
-        return results
+        return [
+            {
+                "content": self.documents[i],
+                "score": s,
+                "source_id": i
+            }
+            for i, s in scores[:top_k]
+        ]

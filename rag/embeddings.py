@@ -9,12 +9,9 @@ def get_embedding(texts):
     if isinstance(texts, str):
         texts = [texts]
 
-    response = openai.Embedding.create(
+    res = openai.Embedding.create(
         model="text-embedding-3-small",
         input=texts
     )
 
-    return [
-        item["embedding"]
-        for item in response["data"]
-    ]
+    return [r["embedding"] for r in res["data"]]

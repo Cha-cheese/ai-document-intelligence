@@ -1,14 +1,15 @@
 from fastapi import FastAPI, UploadFile, File
 from pydantic import BaseModel, Field
 
+import os
+import traceback
+
 from backend.pdf_loader import extract_text_from_pdf
 from rag.chunking import chunk_text
 from rag.embeddings import get_embedding
 from rag.llm import ask_llm
 from rag.vector_store import VectorStore
 
-import os
-import traceback
 
 app = FastAPI()
 
@@ -23,81 +24,54 @@ class QuestionRequest(BaseModel):
 
 @app.get("/")
 def root():
-    return {"status": "ok"}
+    return {"status": "ok", "message": "backend alive"}
 
 
 @app.post("/upload")
-async def upload_pdf(file: UploadFile = File(...)):
+async def upload(file: UploadFile = File(...)):
 
     try:
-
-        contents = await file.read()
+        content = await file.read()
 
         os.makedirs("uploads", exist_ok=True)
-
         path = f"uploads/{file.filename}"
 
         with open(path, "wb") as f:
-            f.write(contents)
+            f.write(content)
 
         text = extract_text_from_pdf(path)
-
-        chunks = chunk_text(text)
-
-        if len(chunks) > 30:
-            chunks = chunks[:30]
+        chunks = chunk_text(text)[:20]
 
         embeddings = get_embedding(chunks)
 
         global vector_store
         vector_store = VectorStore()
-
         vector_store.add(embeddings, chunks)
 
         return {
-            "message": "Indexed successfully",
-            "filename": file.filename,
-            "chunks": len(chunks),
-            "profile": {
-                "document_type": "PDF Document"
-            }
+            "message": "ok",
+            "chunks": len(chunks)
         }
 
     except Exception:
-
-        return {
-            "error": traceback.format_exc()
-        }
+        return {"error": traceback.format_exc()}
 
 
 @app.post("/chat")
-async def chat(request: QuestionRequest):
+async def chat(req: QuestionRequest):
 
     try:
 
         if len(vector_store.documents) == 0:
+            return {"answer": "No document uploaded yet."}
 
-            return {
-                "answer": "Please upload a document first.",
-                "sources": []
-            }
+        query_emb = get_embedding([req.question])[0]
 
-        query_embedding = get_embedding(request.question)[0]
+        docs = vector_store.search(query_emb, top_k=3)
 
-        docs = vector_store.search(
-            query_embedding,
-            top_k=5
-        )
+        context = "\n".join([d["content"] for d in docs])
 
-        context = "\n\n".join([
-            d["content"]
-            for d in docs
-        ])
-
-        answer = ask_llm(
-            request.question,
-            context
-        )
+        answer = ask_llm(req.question, context)
 
         return {
             "answer": answer,
@@ -105,9 +79,7 @@ async def chat(request: QuestionRequest):
         }
 
     except Exception:
-
         return {
             "error": traceback.format_exc(),
-            "answer": "AI processing error occurred.",
-            "sources": []
+            "answer": "failed"
         }

@@ -4,4 +4,3 @@ python-multipart
 openai==0.28.0
 pymupdf
 numpy
-requests
