@@ -1,457 +1,202 @@
 import html
 import json
 import os
-
 import requests
 import streamlit as st
 
-
-API_URL = os.getenv(
-    "API_URL",
-    "https://ai-doc-backend-4dvz.onrender.com"
-)
+# =========================
+# API CONFIG (FIXED)
+# =========================
+API_URL = os.getenv("API_URL", "https://ai-doc-backend-4dvz.onrender.com").rstrip("/")
 
 DEFAULT_MODE = "Analyze"
 
-
-# =========================================
+# =========================
 # PAGE CONFIG
-# =========================================
+# =========================
 st.set_page_config(
     page_title="Ask My Document",
     page_icon="AI",
-    layout="wide",
-    initial_sidebar_state="collapsed"
+    layout="wide"
 )
 
-
-# =========================================
-# CSS
-# =========================================
-st.markdown("""
-<style>
-:root {
-    --bg: #f7f8fb;
-    --card: #ffffff;
-    --ink: #111827;
-    --muted: #64748b;
-    --line: #e2e8f0;
-    --blue: #2563eb;
-    --blue-dark: #1d4ed8;
-    --green: #15803d;
-    --green-soft: #ecfdf5;
-}
-
-header,
-#MainMenu,
-footer,
-[data-testid="stSidebar"],
-[data-testid="stToolbar"],
-[data-testid="stHeader"] {
-    display: none;
-    height: 0;
-}
-
-.stApp {
-    background:
-        linear-gradient(180deg, #eef4ff 0, #f7f8fb 18rem),
-        var(--bg);
-    color: var(--ink);
-}
-
-.block-container {
-    max-width: 940px;
-    padding: 3rem 1.25rem 7rem;
-}
-
-.hero h1 {
-    color: var(--ink);
-    font-size: 2.1rem;
-    font-weight: 800;
-    margin-bottom: 0.5rem;
-}
-
-.hero p {
-    color: var(--muted);
-}
-
-.card {
-    background: white;
-    border: 1px solid var(--line);
-    border-radius: 14px;
-    padding: 1rem;
-    margin-bottom: 1rem;
-}
-
-.doc-name {
-    font-weight: 700;
-    font-size: 1rem;
-}
-
-.doc-meta {
-    color: var(--muted);
-    margin-top: 0.3rem;
-}
-
-.ready {
-    margin-top: 0.7rem;
-    color: var(--green);
-    background: var(--green-soft);
-    padding: 0.35rem 0.7rem;
-    border-radius: 999px;
-    display: inline-block;
-    font-weight: 700;
-}
-
-.stChatMessage {
-    border-radius: 14px;
-}
-
-.empty-chat {
-    background: white;
-    border: 1px solid var(--line);
-    padding: 1rem;
-    border-radius: 14px;
-    color: var(--muted);
-}
-</style>
-""", unsafe_allow_html=True)
-
-
-# =========================================
-# SESSION STATE
-# =========================================
+# =========================
+# INIT STATE
+# =========================
 def init_state():
-
     defaults = {
         "messages": [],
         "profile": None,
         "filename": None,
-        "chunks": 0,
-        "pending_question": None,
-        "uploaded_once": False
+        "uploaded": False
     }
+    for k, v in defaults.items():
+        if k not in st.session_state:
+            st.session_state[k] = v
 
-    for key, value in defaults.items():
-
-        if key not in st.session_state:
-            st.session_state[key] = value
-
-
-# =========================================
+# =========================
 # HISTORY
-# =========================================
+# =========================
 def history_payload():
-
     return [
-        {
-            "role": m["role"],
-            "content": m["content"]
-        }
-        for m in st.session_state.messages[-10:]
+        {"role": m["role"], "content": m["content"]}
+        for m in st.session_state.messages[-8:]
     ]
 
-
-# =========================================
-# STREAM CHAT
-# =========================================
+# =========================
+# STREAM CHAT (ROBUST)
+# =========================
 def stream_chat(question):
 
     payload = {
         "question": question,
-        "mode": DEFAULT_MODE,
-        "history": history_payload()
+        "history": history_payload(),
+        "mode": DEFAULT_MODE
     }
 
-    answer = ""
+    try:
+        with requests.post(
+            f"{API_URL}/chat/stream",
+            json=payload,
+            stream=True,
+            timeout=180
+        ) as r:
 
-    with requests.post(
-        f"{API_URL}/chat/stream",
-        json=payload,
-        stream=True,
-        timeout=180
-    ) as response:
+            r.raise_for_status()
 
-        response.raise_for_status()
+            event = None
+            answer = ""
 
-        current_event = None
+            for line in r.iter_lines(decode_unicode=True):
+                if not line:
+                    continue
 
-        for line in response.iter_lines(decode_unicode=True):
+                if line.startswith("event:"):
+                    event = line.split(":", 1)[1].strip()
+                    continue
 
-            if not line:
-                continue
+                if not line.startswith("data:"):
+                    continue
 
-            if line.startswith("event: "):
-                current_event = line.replace(
-                    "event: ",
-                    "",
-                    1
-                )
-                continue
+                try:
+                    data = json.loads(line.replace("data: ", ""))
+                except:
+                    continue
 
-            if not line.startswith("data: "):
-                continue
+                if event == "token":
+                    answer += data
+                    yield answer, False
 
-            data = json.loads(
-                line.replace("data: ", "", 1)
-            )
+                elif event == "done":
+                    yield answer, True
+                    return
 
-            if current_event == "token":
+                elif event == "error":
+                    yield data.get("message", "Server error"), True
+                    return
 
-                answer += data
-                yield answer, False
+    except Exception as e:
+        yield f"Connection error: {str(e)}", True
 
-            elif current_event == "error":
+# =========================
+# UPLOAD
+# =========================
+def upload_document(file):
 
-                yield data.get(
-                    "message",
-                    "AI processing error occurred."
-                ), True
+    with st.spinner("Uploading..."):
 
-            elif current_event == "done":
-
-                yield answer, True
-
-
-# =========================================
-# UPLOAD DOCUMENT
-# =========================================
-def upload_document(uploaded_file):
-
-    with st.spinner("Reading document..."):
-
-        response = requests.post(
+        r = requests.post(
             f"{API_URL}/upload",
-            files={"file": uploaded_file},
+            files={"file": file},
             timeout=180
         )
 
-        response.raise_for_status()
-
-        data = response.json()
+        r.raise_for_status()
+        data = r.json()
 
     if "error" in data:
         raise Exception(data["error"])
 
+    st.session_state.profile = data.get("profile", {})
     st.session_state.filename = data.get("filename")
-    st.session_state.chunks = data.get("chunks", 0)
-    st.session_state.profile = data.get("profile")
     st.session_state.messages = []
-    st.session_state.uploaded_once = True
+    st.session_state.uploaded = True
 
-
-# =========================================
-# HEADER
-# =========================================
+# =========================
+# UI
+# =========================
 def render_header():
+    st.title("📄 Ask My Document")
+    st.caption("Upload PDF → Chat with it")
 
-    st.markdown("""
-    <div class="hero">
-        <h1>Ask questions about your document</h1>
-        <p>
-            Upload a PDF and ask anything about it.
-        </p>
-    </div>
-    """, unsafe_allow_html=True)
-
-
-# =========================================
-# UPLOAD UI
-# =========================================
 def render_upload():
 
-    st.markdown("""
-    <div class="card">
-        <h3>Upload PDF</h3>
-        <p>Resume, report, contract, notes, research paper.</p>
-    </div>
-    """, unsafe_allow_html=True)
+    st.subheader("Upload PDF")
 
-    uploaded_file = st.file_uploader(
-        "Upload PDF",
-        type=["pdf"],
-        label_visibility="collapsed",
-        key="main_uploader"
-    )
+    file = st.file_uploader("PDF only", type=["pdf"])
 
-    if uploaded_file is not None:
+    if file:
 
-        if (
-            st.session_state.filename != uploaded_file.name
-            or st.session_state.profile is None
-        ):
+        if st.session_state.filename != file.name:
 
             try:
-
-                upload_document(uploaded_file)
-
-                st.success(
-                    "Document is ready. You can ask a question now."
-                )
-
+                upload_document(file)
+                st.success("Upload success")
                 st.rerun()
 
-            except Exception as error:
+            except Exception as e:
+                st.error(f"Upload failed: {e}")
 
-                st.error(f"Upload failed: {error}")
+def render_doc():
 
-
-# =========================================
-# DOCUMENT SUMMARY
-# =========================================
-def render_document_summary():
-
-    profile = st.session_state.profile
-
-    if not profile:
+    p = st.session_state.profile
+    if not p:
         return
 
-    filename = st.session_state.filename
-
-    word_count = profile.get("word_count", 0)
-
-    reading_time = profile.get(
-        "reading_time_minutes",
-        1
+    st.info(
+        f"{st.session_state.filename} | "
+        f"{p.get('word_count',0)} words"
     )
 
-    document_type = profile.get(
-        "document_type",
-        "Document"
-    )
-
-    st.markdown(f"""
-    <div class="card">
-        <div class="doc-name">
-            {html.escape(filename)}
-        </div>
-
-        <div class="doc-meta">
-            {html.escape(document_type)}
-            · {word_count} words
-            · {reading_time} min read
-        </div>
-
-        <div class="ready">
-            Ready
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-
-
-# =========================================
-# CHAT HISTORY
-# =========================================
-def render_chat_history():
-
-    if not st.session_state.messages:
-
-        st.markdown("""
-        <div class="empty-chat">
-            Your answers will appear here.
-        </div>
-        """, unsafe_allow_html=True)
-
-        return
-
-    for message in st.session_state.messages:
-
-        with st.chat_message(message["role"]):
-
-            st.markdown(message["content"])
-
-
-# =========================================
-# ANSWER QUESTION
-# =========================================
-def answer_question(question):
+def chat_ui():
 
     if not st.session_state.profile:
-
-        st.error("No document uploaded yet.")
-
+        st.warning("Upload document first")
         return
 
-    st.session_state.messages.append({
-        "role": "user",
-        "content": question
-    })
+    for m in st.session_state.messages:
+        with st.chat_message(m["role"]):
+            st.markdown(m["content"])
 
-    with st.chat_message("user"):
+    q = st.chat_input("Ask something...")
 
-        st.markdown(question)
+    if q:
 
-    with st.chat_message("assistant"):
+        st.session_state.messages.append({"role": "user", "content": q})
 
-        answer_placeholder = st.empty()
+        with st.chat_message("user"):
+            st.markdown(q)
 
-        final_answer = ""
+        with st.chat_message("assistant"):
 
-        try:
+            box = st.empty()
+            final = ""
 
-            for partial_answer, done in stream_chat(question):
-
-                final_answer = partial_answer
-
-                answer_placeholder.markdown(
-                    final_answer + "▌"
-                )
-
+            for text, done in stream_chat(q):
+                final = text
+                box.markdown(text + "▌")
                 if done:
                     break
 
-            if not final_answer.strip():
+            box.markdown(final)
 
-                final_answer = "No answer generated."
+        st.session_state.messages.append({"role": "assistant", "content": final})
 
-            answer_placeholder.markdown(final_answer)
-
-        except Exception as error:
-
-            final_answer = f"Error: {error}"
-
-            answer_placeholder.error(final_answer)
-
-    st.session_state.messages.append({
-        "role": "assistant",
-        "content": final_answer
-    })
-
-
-# =========================================
+# =========================
 # APP
-# =========================================
+# =========================
 init_state()
-
 render_header()
-
-# DEBUG
-st.write(
-    "DEBUG PROFILE:",
-    st.session_state.profile
-)
-
-if st.session_state.profile:
-
-    render_document_summary()
-
-    if st.button("Clear chat"):
-
-        st.session_state.messages = []
-
-        st.rerun()
-
-else:
-
-    render_upload()
-
-render_chat_history()
-
-question = st.chat_input(
-    "Ask anything about the document...",
-    disabled=not st.session_state.profile
-)
-
-if question:
-
-    answer_question(question)
+render_upload()
+render_doc()
+chat_ui()
