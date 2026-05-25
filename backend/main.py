@@ -9,10 +9,11 @@ from rag.vector_store import VectorStore
 
 import os
 import gc
+import json
 import traceback
 
 # =========================
-# MEMORY OPTIMIZATION
+# ENV
 # =========================
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 os.environ["OMP_NUM_THREADS"] = "1"
@@ -20,14 +21,12 @@ os.environ["OMP_NUM_THREADS"] = "1"
 gc.collect()
 
 # =========================
-# FASTAPI
+# APP
 # =========================
 app = FastAPI()
 
-# =========================
-# GLOBAL VECTOR STORE
-# =========================
-vector_store = VectorStore()
+DATA_FILE = "vector_store.json"
+
 
 # =========================
 # REQUEST MODEL
@@ -43,10 +42,57 @@ class QuestionRequest(BaseModel):
 # =========================
 @app.get("/")
 def root():
+    return {"status": "ok"}
 
-    return {
-        "status": "ok"
-    }
+
+# =========================
+# SAVE VECTOR STORE
+# =========================
+def save_vector_store(embeddings, chunks):
+
+    data = []
+
+    for embedding, chunk in zip(
+        embeddings,
+        chunks
+    ):
+
+        data.append({
+            "embedding": embedding,
+            "content": chunk
+        })
+
+    with open(DATA_FILE, "w") as f:
+        json.dump(data, f)
+
+
+# =========================
+# LOAD VECTOR STORE
+# =========================
+def load_vector_store():
+
+    vector_store = VectorStore()
+
+    if not os.path.exists(DATA_FILE):
+        return vector_store
+
+    with open(DATA_FILE, "r") as f:
+        data = json.load(f)
+
+    embeddings = []
+    documents = []
+
+    for item in data:
+
+        embeddings.append(item["embedding"])
+        documents.append(item["content"])
+
+    vector_store.add(
+        embeddings,
+        documents
+    )
+
+    return vector_store
 
 
 # =========================
@@ -54,8 +100,6 @@ def root():
 # =========================
 @app.post("/upload")
 async def upload_pdf(file: UploadFile = File(...)):
-
-    global vector_store
 
     try:
 
@@ -68,39 +112,16 @@ async def upload_pdf(file: UploadFile = File(...)):
         with open(upload_path, "wb") as f:
             f.write(contents)
 
-        print("PDF SAVED")
-
-        # =========================
-        # EXTRACT TEXT
-        # =========================
         text = extract_text_from_pdf(upload_path)
 
-        print("TEXT EXTRACTED")
-
-        if not text or len(text.strip()) == 0:
+        if not text.strip():
 
             return {
-                "error": "No text found in PDF",
-                "message": "Upload failed"
+                "error": "No text found"
             }
 
-        # =========================
-        # CHUNK
-        # =========================
         chunks = chunk_text(text)
 
-        print("CHUNKS:", len(chunks))
-
-        if len(chunks) == 0:
-
-            return {
-                "error": "No chunks generated",
-                "message": "Upload failed"
-            }
-
-        # =========================
-        # EMBEDDINGS
-        # =========================
         embeddings = []
 
         batch_size = 20
@@ -113,19 +134,13 @@ async def upload_pdf(file: UploadFile = File(...)):
 
             embeddings.extend(batch_embeddings)
 
-        print("EMBEDDINGS:", len(embeddings))
-
         # =========================
-        # RESET VECTOR STORE
+        # SAVE TO FILE
         # =========================
-        vector_store = VectorStore()
-
-        vector_store.add(
+        save_vector_store(
             embeddings,
             chunks
         )
-
-        print("VECTOR STORE READY")
 
         gc.collect()
 
@@ -145,13 +160,8 @@ async def upload_pdf(file: UploadFile = File(...)):
 
     except Exception:
 
-        error_message = traceback.format_exc()
-
-        print(error_message)
-
         return {
-            "error": error_message,
-            "message": "Upload failed"
+            "error": traceback.format_exc()
         }
 
 
@@ -161,69 +171,40 @@ async def upload_pdf(file: UploadFile = File(...)):
 @app.post("/chat")
 async def chat(request: QuestionRequest):
 
-    global vector_store
-
     try:
 
-        print("QUESTION:", request.question)
+        # =========================
+        # LOAD VECTOR STORE
+        # =========================
+        vector_store = load_vector_store()
 
-        # =========================
-        # CHECK VECTOR STORE
-        # =========================
         if len(vector_store.documents) == 0:
 
             return {
-                "answer": "Please upload a document first.",
+                "answer": "No document uploaded yet.",
                 "sources": []
             }
 
-        # =========================
-        # QUERY EMBEDDING
-        # =========================
         query_embedding = get_embedding(
             [request.question]
         )[0]
 
-        print("QUERY EMBEDDING READY")
-
-        # =========================
-        # SEARCH
-        # =========================
         retrieved_docs = vector_store.search(
             query_embedding,
             top_k=2
         )
 
-        print("DOCS FOUND:", len(retrieved_docs))
-
-        if len(retrieved_docs) == 0:
-
-            return {
-                "answer": "No relevant information found.",
-                "sources": []
-            }
-
-        # =========================
-        # CONTEXT
-        # =========================
         context = "\n\n".join([
             doc["content"]
             for doc in retrieved_docs
         ])
 
-        print("CONTEXT READY")
-
-        # =========================
-        # LLM
-        # =========================
         answer = ask_llm(
             request.question,
             context,
             history=request.history,
             mode=request.mode
         )
-
-        print("ANSWER:", answer)
 
         return {
             "answer": answer,
@@ -232,11 +213,7 @@ async def chat(request: QuestionRequest):
 
     except Exception:
 
-        error_message = traceback.format_exc()
-
-        print(error_message)
-
         return {
-            "answer": error_message,
+            "answer": traceback.format_exc(),
             "sources": []
         }
