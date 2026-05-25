@@ -5,3 +5,8 @@ numpy
 scikit-learn
 requests
 python-multipart
+langchain
+langchain-community
+langchain-openai
+chromadb
+tiktoken

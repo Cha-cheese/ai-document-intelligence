@@ -2,33 +2,24 @@ import faiss
 import numpy as np
 
 class VectorStore:
-    def __init__(self):
-        self.index = None
-        self.chunks = []
+    def __init__(self, dim=128):
+        self.dim = dim
+        self.index = faiss.IndexFlatIP(dim)
+        self.texts = []
 
-    def add(self, embeddings, chunks):
-        self.chunks = chunks
+    def add(self, vectors, texts):
+        vectors = np.array(vectors).astype("float32")
+        self.index.add(vectors)
+        self.texts.extend(texts)
 
-        dim = len(embeddings[0])
-        self.index = faiss.IndexFlatL2(dim)
+    def search(self, query_vector, top_k=5):
+        query_vector = np.array([query_vector]).astype("float32")
 
-        self.index.add(np.array(embeddings).astype("float32"))
-
-    def search(self, query_embedding, top_k=5):
-        if self.index is None:
-            return []
-
-        D, I = self.index.search(
-            np.array([query_embedding]).astype("float32"),
-            top_k
-        )
+        scores, indices = self.index.search(query_vector, top_k)
 
         results = []
-        for idx in I[0]:
-            if idx < len(self.chunks):
-                results.append({
-                    "content": self.chunks[idx],
-                    "score": 1.0
-                })
+        for i in indices[0]:
+            if i < len(self.texts):
+                results.append(self.texts[i])
 
         return results
