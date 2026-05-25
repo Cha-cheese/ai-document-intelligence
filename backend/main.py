@@ -99,7 +99,7 @@ async def chat(request: QuestionRequest):
     try:
 
         query_embedding = get_embedding(
-            request.question
+        [request.question]
         )[0]
 
         retrieved_docs = vector_store.search(
@@ -139,7 +139,7 @@ async def chat_stream(request: QuestionRequest):
     try:
 
         query_embedding = get_embedding(
-            request.question
+        [request.question]
         )[0]
 
         retrieved_docs = vector_store.search(

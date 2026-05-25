@@ -1,27 +1,57 @@
 import numpy as np
+from sklearn.metrics.pairwise import cosine_similarity
 
 
 class VectorStore:
+
     def __init__(self):
-        self.vectors = None
-        self.texts = []
 
-    def add(self, embeddings, texts):
-        self.vectors = np.array(embeddings).astype("float32")
-        self.texts = texts
+        self.embeddings = []
+        self.documents = []
 
-    def search(self, query_embedding, top_k=5):
-        if self.vectors is None:
+    def add(self, embeddings, documents):
+
+        for embedding, document in zip(
+            embeddings,
+            documents
+        ):
+
+            self.embeddings.append(
+                np.array(embedding, dtype=np.float32)
+            )
+
+            self.documents.append(document)
+
+    def search(self, query_embedding, top_k=3):
+
+        if len(self.embeddings) == 0:
             return []
 
-        scores = np.dot(self.vectors, query_embedding)
-        idx = np.argsort(scores)[::-1][:top_k]
+        query_embedding = np.array(
+            query_embedding,
+            dtype=np.float32
+        ).reshape(1, -1)
 
-        return [
-            {
-                "content": self.texts[i],
-                "score": float(scores[i]),
-                "source_id": i
-            }
-            for i in idx
-        ]
+        embeddings_matrix = np.array(
+            self.embeddings,
+            dtype=np.float32
+        )
+
+        similarities = cosine_similarity(
+            query_embedding,
+            embeddings_matrix
+        )[0]
+
+        top_indices = similarities.argsort()[-top_k:][::-1]
+
+        results = []
+
+        for idx in top_indices:
+
+            results.append({
+                "content": self.documents[idx],
+                "score": float(similarities[idx]),
+                "source_id": idx + 1
+            })
+
+        return results
