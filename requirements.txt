@@ -1,12 +1,9 @@
 fastapi
 uvicorn
-pymupdf
+pydantic
 numpy
-scikit-learn
-requests
+faiss-cpu
 python-multipart
-langchain
-langchain-community
-langchain-openai
-chromadb
-tiktoken
+streamlit
+requests
+pymupdf

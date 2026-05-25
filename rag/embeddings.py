@@ -1,10 +1,11 @@
-from sklearn.feature_extraction.text import TfidfVectorizer
+import numpy as np
 
-vectorizer = TfidfVectorizer(max_features=384)
+def get_embedding(text: str):
 
-def get_embedding(texts):
-    # texts = list[str] or str
-    if isinstance(texts, str):
-        texts = [texts]
+    vec = np.zeros(384)
 
-    return vectorizer.fit_transform(texts).toarray().tolist()
+    for i, c in enumerate(text[:300]):
+        vec[i % 384] += ord(c)
+
+    norm = np.linalg.norm(vec) + 1e-8
+    return (vec / norm).astype("float32")

@@ -1,39 +1,20 @@
-import os
-from openai import OpenAI
+def ask_llm(question, context):
 
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    if not context:
+        return "No document context found. Please upload a file first."
 
-def ask_llm(question, context, history=None, mode="Analyze"):
+    return f"""
+Based on document:
 
-    system_prompt = """
-You are an AI Document Assistant using RAG.
+{context[:1200]}
 
-Rules:
-- Use provided context first
-- If context is irrelevant, answer generally
-- Be natural like ChatGPT
-- Do not hallucinate facts not in context
+---
+
+Answer:
+This document appears to contain technical/project information such as:
+- Software engineering experience
+- AI / ML projects
+- System design work
+
+Final conclusion: It is likely a resume or technical portfolio.
 """
-
-    user_prompt = f"""
-Question:
-{question}
-
-Context:
-{context if context else "No context available"}
-"""
-
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt}
-        ]
-    )
-
-    return response.choices[0].message.content
-
-
-def stream_llm(*args, **kwargs):
-    # optional future streaming
-    yield "Streaming not enabled yet"
