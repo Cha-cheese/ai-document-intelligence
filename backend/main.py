@@ -55,7 +55,7 @@ async def upload_pdf(file: UploadFile = File(...)):
 
         embeddings = []
 
-        batch_size = 10
+        batch_size = 20
 
         for i in range(0, len(chunks), batch_size):
 
@@ -104,7 +104,7 @@ async def chat(request: QuestionRequest):
 
         retrieved_docs = vector_store.search(
             query_embedding,
-            top_k=3
+            top_k=2
         )
 
         context = "\n\n".join([
