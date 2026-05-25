@@ -5,27 +5,23 @@ import os
 app = FastAPI()
 
 # =========================
-# SAFE INIT (กัน crash ตอน boot)
+# GLOBAL MEMORY (ต้องอยู่ระดับนี้เท่านั้น)
 # =========================
-vector_store = None
-
-def get_vector_store():
-    global vector_store
-    if vector_store is None:
-        from rag.vector_store import VectorStore
-        vector_store = VectorStore()
-    return vector_store
+VECTOR_STORE = {
+    "texts": [],
+    "vectors": []
+}
 
 
 # =========================
-# REQUEST
+# MODELS
 # =========================
 class QuestionRequest(BaseModel):
     question: str
 
 
 # =========================
-# ROOT (สำคัญ debug render)
+# ROOT DEBUG
 # =========================
 @app.get("/")
 def root():
@@ -33,19 +29,19 @@ def root():
 
 
 # =========================
-# UPLOAD (SAFE)
+# UPLOAD
 # =========================
 @app.post("/upload")
 async def upload(file: UploadFile = File(...)):
 
     try:
-        contents = await file.read()
+        content = await file.read()
 
         os.makedirs("uploads", exist_ok=True)
         path = f"uploads/{file.filename}"
 
         with open(path, "wb") as f:
-            f.write(contents)
+            f.write(content)
 
         from backend.pdf_loader import extract_text_from_pdf
         from rag.chunking import chunk_text
@@ -56,12 +52,12 @@ async def upload(file: UploadFile = File(...)):
 
         vectors = [get_embedding(c) for c in chunks]
 
-        vs = get_vector_store()
-        vs.add(vectors, chunks)
+        # 🔥 IMPORTANT FIX: overwrite global memory
+        VECTOR_STORE["texts"] = chunks
+        VECTOR_STORE["vectors"] = vectors
 
         return {
-            "message": "uploaded",
-            "chunks": len(chunks),
+            "ok": True,
             "filename": file.filename,
             "profile": {
                 "word_count": len(text.split()),
@@ -71,11 +67,11 @@ async def upload(file: UploadFile = File(...)):
         }
 
     except Exception as e:
-        return {"error": str(e)}
+        return {"ok": False, "error": str(e)}
 
 
 # =========================
-# CHAT (SAFE)
+# CHAT
 # =========================
 @app.post("/chat")
 def chat(req: QuestionRequest):
@@ -83,11 +79,25 @@ def chat(req: QuestionRequest):
     try:
         from rag.embeddings import get_embedding
         from rag.llm import ask_llm
+        import numpy as np
 
-        vs = get_vector_store()
+        if not VECTOR_STORE["vectors"]:
+            return {
+                "answer": "Please upload a document first.",
+                "sources": []
+            }
 
-        q_vec = get_embedding(req.question)
-        docs = vs.search(q_vec, top_k=5)
+        q_vec = np.array(get_embedding(req.question))
+
+        scores = []
+        for i, v in enumerate(VECTOR_STORE["vectors"]):
+            v = np.array(v)
+            score = np.dot(q_vec, v)
+            scores.append((score, i))
+
+        scores.sort(reverse=True)
+
+        docs = [VECTOR_STORE["texts"][i] for _, i in scores[:5]]
 
         context = "\n".join(docs)
 
@@ -100,7 +110,7 @@ def chat(req: QuestionRequest):
 
     except Exception as e:
         return {
-            "answer": "system error",
+            "answer": "error",
             "error": str(e),
             "sources": []
         }
