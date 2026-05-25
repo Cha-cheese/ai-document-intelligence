@@ -1,17 +1,7 @@
 import os
-import requests
+import openai
 
-HF_API_TOKEN = os.getenv("HF_API_TOKEN")
-
-API_URL = (
-    "https://api-inference.huggingface.co/"
-    "pipeline/feature-extraction/"
-    "sentence-transformers/all-MiniLM-L6-v2"
-)
-
-headers = {
-    "Authorization": f"Bearer {HF_API_TOKEN}"
-}
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
 
 def get_embedding(texts):
@@ -19,20 +9,12 @@ def get_embedding(texts):
     if isinstance(texts, str):
         texts = [texts]
 
-    response = requests.post(
-        API_URL,
-        headers=headers,
-        json={
-            "inputs": texts,
-            "options": {
-                "wait_for_model": True
-            }
-        },
-        timeout=60
+    response = openai.Embedding.create(
+        model="text-embedding-3-small",
+        input=texts
     )
 
-    response.raise_for_status()
-
-    embeddings = response.json()
-
-    return embeddings
+    return [
+        item["embedding"]
+        for item in response["data"]
+    ]

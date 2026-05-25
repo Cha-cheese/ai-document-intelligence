@@ -1,9 +1,7 @@
 fastapi
 uvicorn
 python-multipart
+openai==0.28.0
 pymupdf
 numpy
 requests
-openai==0.28.0
-faiss-cpu
-streamlit

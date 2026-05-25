@@ -1,65 +1,45 @@
 import numpy as np
-import faiss
-
 
 class VectorStore:
 
     def __init__(self):
-        self.index = None
+        self.embeddings = []
         self.documents = []
 
-    def add(self, embeddings, chunks):
+    def add(self, embeddings, documents):
 
-        embeddings = np.array(
-            embeddings,
-            dtype="float32"
-        )
+        for emb in embeddings:
+            self.embeddings.append(np.array(emb, dtype=np.float32))
 
-        if len(embeddings.shape) == 3:
-            embeddings = embeddings[:, 0, :]
-
-        dimension = embeddings.shape[1]
-
-        if self.index is None:
-            self.index = faiss.IndexFlatL2(dimension)
-
-        self.index.add(embeddings)
-
-        for chunk in chunks:
-            self.documents.append(chunk)
+        self.documents.extend(documents)
 
     def search(self, query_embedding, top_k=5):
 
-        if self.index is None:
+        if len(self.embeddings) == 0:
             return []
 
-        query_embedding = np.array(
-            [query_embedding],
-            dtype="float32"
-        )
+        query = np.array(query_embedding, dtype=np.float32)
 
-        if len(query_embedding.shape) == 3:
-            query_embedding = query_embedding[:, 0, :]
+        scores = []
 
-        distances, indices = self.index.search(
-            query_embedding,
-            top_k
-        )
+        for idx, emb in enumerate(self.embeddings):
+
+            score = np.dot(query, emb) / (
+                np.linalg.norm(query) * np.linalg.norm(emb)
+            )
+
+            scores.append((idx, float(score)))
+
+        scores.sort(key=lambda x: x[1], reverse=True)
 
         results = []
 
-        for score, idx in zip(
-            distances[0],
-            indices[0]
-        ):
-
-            if idx >= len(self.documents):
-                continue
+        for idx, score in scores[:top_k]:
 
             results.append({
                 "content": self.documents[idx],
-                "score": float(score),
-                "source_id": idx
+                "score": round(score, 4),
+                "source_id": idx + 1
             })
 
         return results
