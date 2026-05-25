@@ -3,4 +3,6 @@ uvicorn
 python-multipart
 pymupdf
 numpy
+scikit-learn
+faiss-cpu
 requests

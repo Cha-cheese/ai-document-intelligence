@@ -1,17 +1,10 @@
-import os
-import openai
+from sklearn.feature_extraction.text import TfidfVectorizer
 
-openai.api_key = os.getenv("OPENAI_API_KEY")
-
+vectorizer = TfidfVectorizer(max_features=384)
 
 def get_embedding(texts):
-
+    # texts = list[str] or str
     if isinstance(texts, str):
         texts = [texts]
 
-    res = openai.Embedding.create(
-        model="text-embedding-3-small",
-        input=texts
-    )
-
-    return [r["embedding"] for r in res["data"]]
+    return vectorizer.fit_transform(texts).toarray().tolist()
