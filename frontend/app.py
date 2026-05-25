@@ -293,42 +293,29 @@ def history_payload():
 
 
 def stream_chat(question):
+
     payload = {
         "question": question,
         "mode": DEFAULT_MODE,
         "history": history_payload()
     }
-    answer = ""
 
-    with requests.post(
+    response = requests.post(
         f"{API_URL}/chat",
         json=payload,
-        stream=True,
         timeout=180
-    ) as response:
-        response.raise_for_status()
-        current_event = None
+    )
 
-        for line in response.iter_lines(decode_unicode=True):
-            if not line:
-                continue
+    response.raise_for_status()
 
-            if line.startswith("event: "):
-                current_event = line.replace("event: ", "", 1)
-                continue
+    data = response.json()
 
-            if not line.startswith("data: "):
-                continue
+    answer = data.get("answer", "")
 
-            data = json.loads(line.replace("data: ", "", 1))
+    if not answer:
+        answer = "No answer generated."
 
-            if current_event == "token":
-                answer += data
-                yield answer, False
-            elif current_event == "error":
-                yield data.get("message", "AI processing error occurred."), True
-            elif current_event == "done":
-                yield answer, True
+    yield answer, True
 
 
 def upload_document(uploaded_file):
