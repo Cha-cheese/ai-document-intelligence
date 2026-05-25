@@ -3,8 +3,7 @@ import torch
 
 _model = None
 
-
-def load():
+def get_model():
     global _model
     if _model is None:
         _model = SentenceTransformer("all-MiniLM-L6-v2")
@@ -12,7 +11,7 @@ def load():
 
 
 def get_embedding(texts):
-    model = load()
+    model = get_model()
 
     if isinstance(texts, str):
         texts = [texts]
@@ -20,7 +19,7 @@ def get_embedding(texts):
     with torch.no_grad():
         return model.encode(
             texts,
-            batch_size=2,   # 🔥 very important for Render
+            batch_size=1,   # 🔥 สำคัญมาก
             convert_to_numpy=True,
             show_progress_bar=False
         )

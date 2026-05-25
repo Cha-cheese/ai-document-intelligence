@@ -113,11 +113,21 @@ async def upload_pdf(file: UploadFile = File(...)):
 @app.post("/chat")
 async def chat(request: QuestionRequest):
     try:
-        embeddings_fn = get_embedding()
-        ask_llm = get_llm()
+        from rag.vector_store import VectorStore
+        from rag.embeddings import get_embedding
+        from rag.llm import ask_llm
+
         store = get_vector_store()
 
-        query_emb = embeddings_fn([request.question])[0]
+        # 🔥 safe embedding
+        embeddings_fn = get_embedding()
+        query_emb = embeddings_fn([request.question])
+
+        if len(query_emb) == 0:
+            return {"error": "embedding failed"}
+
+        query_emb = query_emb[0]
+
         docs = store.search(query_emb, top_k=5)
 
         context = "\n\n".join([d["content"] for d in docs])
@@ -137,7 +147,7 @@ async def chat(request: QuestionRequest):
     except Exception as e:
         return {
             "error": str(e),
-            "answer": "AI failed",
+            "answer": "backend crashed safely",
             "sources": []
         }
 
