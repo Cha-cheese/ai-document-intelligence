@@ -3,9 +3,10 @@ uvicorn
 python-multipart
 pymupdf
 numpy
-sentence-transformers==2.7.0
-torch==2.2.2
-scikit-learn
+sentence-transformers
+transformers
+torch
+faiss-cpu
+groq
 requests
 streamlit
-groq
