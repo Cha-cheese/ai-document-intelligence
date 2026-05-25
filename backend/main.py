@@ -1,38 +1,57 @@
 from fastapi import FastAPI, UploadFile, File
-from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from backend.pdf_loader import extract_text_from_pdf
 from rag.chunking import chunk_text
 from rag.embeddings import get_embedding
-from rag.llm import ask_llm, stream_llm
+from rag.llm import ask_llm
 from rag.vector_store import VectorStore
 
-import json
 import os
 import gc
+import traceback
 
+# =========================
+# MEMORY OPTIMIZATION
+# =========================
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 os.environ["OMP_NUM_THREADS"] = "1"
 
 gc.collect()
 
+# =========================
+# FASTAPI
+# =========================
 app = FastAPI()
 
+# =========================
+# GLOBAL VECTOR STORE
+# =========================
 vector_store = VectorStore()
 
-
+# =========================
+# REQUEST MODEL
+# =========================
 class QuestionRequest(BaseModel):
     question: str
     history: list[dict[str, str]] = Field(default_factory=list)
     mode: str = "Analyze"
 
 
+# =========================
+# ROOT
+# =========================
 @app.get("/")
 def root():
-    return {"status": "ok"}
+
+    return {
+        "status": "ok"
+    }
 
 
+# =========================
+# UPLOAD PDF
+# =========================
 @app.post("/upload")
 async def upload_pdf(file: UploadFile = File(...)):
 
@@ -49,10 +68,39 @@ async def upload_pdf(file: UploadFile = File(...)):
         with open(upload_path, "wb") as f:
             f.write(contents)
 
+        print("PDF SAVED")
+
+        # =========================
+        # EXTRACT TEXT
+        # =========================
         text = extract_text_from_pdf(upload_path)
 
+        print("TEXT EXTRACTED")
+
+        if not text or len(text.strip()) == 0:
+
+            return {
+                "error": "No text found in PDF",
+                "message": "Upload failed"
+            }
+
+        # =========================
+        # CHUNK
+        # =========================
         chunks = chunk_text(text)
 
+        print("CHUNKS:", len(chunks))
+
+        if len(chunks) == 0:
+
+            return {
+                "error": "No chunks generated",
+                "message": "Upload failed"
+            }
+
+        # =========================
+        # EMBEDDINGS
+        # =========================
         embeddings = []
 
         batch_size = 20
@@ -65,9 +113,19 @@ async def upload_pdf(file: UploadFile = File(...)):
 
             embeddings.extend(batch_embeddings)
 
+        print("EMBEDDINGS:", len(embeddings))
+
+        # =========================
+        # RESET VECTOR STORE
+        # =========================
         vector_store = VectorStore()
 
-        vector_store.add(embeddings, chunks)
+        vector_store.add(
+            embeddings,
+            chunks
+        )
+
+        print("VECTOR STORE READY")
 
         gc.collect()
 
@@ -85,33 +143,79 @@ async def upload_pdf(file: UploadFile = File(...)):
             }
         }
 
-    except Exception as e:
+    except Exception:
+
+        error_message = traceback.format_exc()
+
+        print(error_message)
 
         return {
-            "error": str(e),
+            "error": error_message,
             "message": "Upload failed"
         }
 
 
+# =========================
+# CHAT
+# =========================
 @app.post("/chat")
 async def chat(request: QuestionRequest):
 
+    global vector_store
+
     try:
 
+        print("QUESTION:", request.question)
+
+        # =========================
+        # CHECK VECTOR STORE
+        # =========================
+        if len(vector_store.documents) == 0:
+
+            return {
+                "answer": "Please upload a document first.",
+                "sources": []
+            }
+
+        # =========================
+        # QUERY EMBEDDING
+        # =========================
         query_embedding = get_embedding(
-        [request.question]
+            [request.question]
         )[0]
 
+        print("QUERY EMBEDDING READY")
+
+        # =========================
+        # SEARCH
+        # =========================
         retrieved_docs = vector_store.search(
             query_embedding,
             top_k=2
         )
 
+        print("DOCS FOUND:", len(retrieved_docs))
+
+        if len(retrieved_docs) == 0:
+
+            return {
+                "answer": "No relevant information found.",
+                "sources": []
+            }
+
+        # =========================
+        # CONTEXT
+        # =========================
         context = "\n\n".join([
             doc["content"]
             for doc in retrieved_docs
         ])
 
+        print("CONTEXT READY")
+
+        # =========================
+        # LLM
+        # =========================
         answer = ask_llm(
             request.question,
             context,
@@ -119,78 +223,20 @@ async def chat(request: QuestionRequest):
             mode=request.mode
         )
 
+        print("ANSWER:", answer)
+
         return {
             "answer": answer,
             "sources": retrieved_docs
         }
 
-    except Exception as e:
+    except Exception:
+
+        error_message = traceback.format_exc()
+
+        print(error_message)
 
         return {
-            "error": str(e),
-            "answer": "AI processing error occurred.",
+            "answer": error_message,
             "sources": []
         }
-
-
-@app.post("/chat/stream")
-async def chat_stream(request: QuestionRequest):
-
-    try:
-
-        query_embedding = get_embedding(
-        [request.question]
-        )[0]
-
-        retrieved_docs = vector_store.search(
-            query_embedding,
-            top_k=3
-        )
-
-        context = "\n\n".join([
-            doc["content"]
-            for doc in retrieved_docs
-        ])
-
-        def event_stream():
-
-            yield (
-                f"event: sources\n"
-                f"data: {json.dumps(retrieved_docs)}\n\n"
-            )
-
-            for token in stream_llm(
-                request.question,
-                context,
-                history=request.history,
-                mode=request.mode
-            ):
-
-                yield (
-                    f"event: token\n"
-                    f"data: {json.dumps(token)}\n\n"
-                )
-
-            yield (
-                f"event: done\n"
-                f"data: {{\"status\":\"complete\"}}\n\n"
-            )
-
-        return StreamingResponse(
-            event_stream(),
-            media_type="text/event-stream"
-        )
-
-    except Exception as e:
-
-        def error_stream():
-
-            yield (
-                f"event: error\n"
-                f"data: {json.dumps({'message': str(e)})}\n\n"
-            )
-
-        return StreamingResponse(
-            error_stream(),
-            media_type="text/event-stream"
-        )
