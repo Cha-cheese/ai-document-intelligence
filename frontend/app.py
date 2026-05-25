@@ -1,8 +1,7 @@
-import html
+import streamlit as st
+import requests
 import json
 import os
-import requests
-import streamlit as st
 
 API_URL = os.getenv("API_URL", "https://ai-doc-backend-4dvz.onrender.com").rstrip("/")
 
@@ -18,6 +17,8 @@ def init():
         st.session_state.profile = None
     if "filename" not in st.session_state:
         st.session_state.filename = None
+    if "uploaded" not in st.session_state:
+        st.session_state.uploaded = False
 
 init()
 
@@ -25,24 +26,28 @@ init()
 # UPLOAD
 # =========================
 def upload(file):
+
     r = requests.post(
         f"{API_URL}/upload",
         files={"file": file}
     )
     r.raise_for_status()
+
     data = r.json()
 
-    st.session_state.profile = data.get("profile", {})
-    st.session_state.filename = data.get("filename")
+    st.session_state.filename = data["filename"]
+    st.session_state.profile = data["profile"]
+    st.session_state.uploaded = True
     st.session_state.messages = []
 
 # =========================
-# CHAT STREAM
+# STREAM CHAT
 # =========================
-def chat_stream(q):
+def stream_chat(q):
+
     r = requests.post(
         f"{API_URL}/chat/stream",
-        json={"question": q, "history": st.session_state.messages},
+        json={"question": q},
         stream=True
     )
 
@@ -52,6 +57,7 @@ def chat_stream(q):
     answer = ""
 
     for line in r.iter_lines(decode_unicode=True):
+
         if not line:
             continue
 
@@ -72,25 +78,25 @@ def chat_stream(q):
             break
 
 # =========================
-# UI HEADER
+# UI
 # =========================
-st.title("📄 Ask your document")
+st.title("📄 Document Chat")
 
 # =========================
 # UPLOAD ALWAYS VISIBLE
 # =========================
 file = st.file_uploader("Upload PDF", type=["pdf"])
 
-if file:
-    if file.name != st.session_state.filename:
-        upload(file)
-        st.success("Uploaded")
+if file and file.name != st.session_state.filename:
+    upload(file)
+    st.success("Uploaded successfully")
+    st.rerun()
 
 # =========================
-# SHOW DOC INFO
+# DOC INFO
 # =========================
 if st.session_state.profile:
-    st.info(f"{st.session_state.filename}")
+    st.info(st.session_state.filename)
 
 # =========================
 # CHAT HISTORY
@@ -100,34 +106,29 @@ for m in st.session_state.messages:
         st.markdown(m["content"])
 
 # =========================
-# CHAT INPUT (IMPORTANT FIX)
+# CHAT INPUT (FIXED)
 # =========================
-question = st.chat_input("Ask about your document...")
+q = st.chat_input("Ask about document...")
 
-if question:
+if q:
 
-    if not st.session_state.profile:
+    if not st.session_state.uploaded:
         st.error("Upload document first")
         st.stop()
 
-    st.session_state.messages.append({"role": "user", "content": question})
+    st.session_state.messages.append({"role": "user", "content": q})
 
     with st.chat_message("user"):
-        st.markdown(question)
+        st.markdown(q)
 
     with st.chat_message("assistant"):
         box = st.empty()
         final = ""
 
-        try:
-            for t in chat_stream(question):
-                final = t
-                box.markdown(t + "▌")
+        for t in stream_chat(q):
+            final = t
+            box.markdown(t + "▌")
 
-            box.markdown(final)
-
-        except Exception as e:
-            final = f"Error: {e}"
-            box.error(final)
+        box.markdown(final)
 
     st.session_state.messages.append({"role": "assistant", "content": final})
