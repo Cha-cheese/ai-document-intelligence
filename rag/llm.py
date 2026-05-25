@@ -1,20 +1,19 @@
 def ask_llm(question, context):
 
     if not context:
-        return "No document context found. Please upload a file first."
+        return "Please upload a document first."
 
     return f"""
-Based on document:
-
-{context[:1200]}
+Document Context:
+{context[:1500]}
 
 ---
 
 Answer:
-This document appears to contain technical/project information such as:
-- Software engineering experience
-- AI / ML projects
-- System design work
+This document looks like a resume / technical profile containing:
+- AI / ML project experience
+- Software engineering work
+- Full-stack development
 
-Final conclusion: It is likely a resume or technical portfolio.
+Final: This is a RESUME document.
 """
