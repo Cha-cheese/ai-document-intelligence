@@ -1,149 +1,176 @@
 from fastapi import FastAPI, UploadFile, File
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-import fitz
-import numpy as np
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, Field
+
+from backend.pdf_loader import extract_text_from_pdf
+from rag.chunking import chunk_text
+from rag.embeddings import get_embedding
+from rag.llm import ask_llm, stream_llm
+from rag.vector_store import VectorStore
+
+import json
+import os
+import gc
+
+gc.collect()
+
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+os.environ["OMP_NUM_THREADS"] = "1"
 
 app = FastAPI()
 
-# =========================
-# CORS
-# =========================
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# =========================
-# MEMORY STORE
-# =========================
-DOCUMENT_TEXT = ""
+vector_store = VectorStore()
 
 
-# =========================
-# EMBEDDING MOCK
-# =========================
-def embed(text):
-    v = np.zeros(128)
-
-    for i, c in enumerate(text[:1000]):
-        v[i % 128] += ord(c)
-
-    norm = np.linalg.norm(v)
-
-    if norm == 0:
-        return v
-
-    return v / norm
-
-
-# =========================
-# SEARCH
-# =========================
-def search(question):
-
-    global DOCUMENT_TEXT
-
-    chunks = []
-
-    text = DOCUMENT_TEXT
-
-    size = 800
-
-    for i in range(0, len(text), size):
-        chunks.append(text[i:i + size])
-
-    if not chunks:
-        return ""
-
-    qv = embed(question)
-
-    scores = []
-
-    for chunk in chunks:
-
-        cv = embed(chunk)
-
-        score = np.dot(qv, cv)
-
-        scores.append((score, chunk))
-
-    scores.sort(reverse=True)
-
-    top_chunks = [x[1] for x in scores[:3]]
-
-    return "\n".join(top_chunks)
-
-
-# =========================
-# CHAT REQUEST
-# =========================
-class ChatRequest(BaseModel):
+class QuestionRequest(BaseModel):
     question: str
+    history: list[dict[str, str]] = Field(default_factory=list)
+    mode: str = "chat"
 
 
-# =========================
-# ROOT
-# =========================
 @app.get("/")
 def root():
-    return {"message": "Backend running"}
+    return {"status": "ok"}
 
 
-# =========================
-# UPLOAD PDF
-# =========================
 @app.post("/upload")
-async def upload(file: UploadFile = File(...)):
+async def upload_pdf(file: UploadFile = File(...)):
 
-    global DOCUMENT_TEXT
+    contents = await file.read()
 
-    pdf_bytes = await file.read()
+    os.makedirs("uploads", exist_ok=True)
 
-    pdf = fitz.open(stream=pdf_bytes, filetype="pdf")
+    upload_path = f"uploads/{file.filename}"
 
-    text = ""
+    with open(upload_path, "wb") as f:
+        f.write(contents)
 
-    for page in pdf:
-        text += page.get_text()
+    text = extract_text_from_pdf(upload_path)
 
-    DOCUMENT_TEXT = text
+    chunks = chunk_text(text)
+
+    embeddings = []
+
+    for chunk in chunks:
+        embedding = get_embedding(chunk)[0]
+        embeddings.append(embedding)
+
+    vector_store.add(embeddings, chunks)
+
+    profile = {
+        "document_type": "General Document",
+        "word_count": len(text.split()),
+        "reading_time_minutes": max(1, len(text.split()) // 220)
+    }
 
     return {
-        "success": True,
+        "message": "Indexed successfully",
+        "chunks": len(chunks),
         "filename": file.filename,
-        "word_count": len(text.split())
+        "profile": profile
     }
 
 
-# =========================
-# CHAT
-# =========================
 @app.post("/chat")
-def chat(req: ChatRequest):
+async def chat(request: QuestionRequest):
 
-    global DOCUMENT_TEXT
+    try:
 
-    if not DOCUMENT_TEXT.strip():
+        smalltalk = [
+            "hi",
+            "hello",
+            "hey",
+            "what's up"
+        ]
+
+        if request.question.lower().strip() in smalltalk:
+
+            return {
+                "answer": "Hello 👋 Upload a document and ask me anything about it.",
+                "sources": []
+            }
+
+        query_embedding = get_embedding(
+            request.question
+        )[0]
+
+        retrieved_docs = vector_store.search(
+            query_embedding,
+            top_k=3
+        )
+
+        context = "\n\n".join([
+            doc["content"]
+            for doc in retrieved_docs
+        ])
+
+        answer = ask_llm(
+            request.question,
+            context,
+            history=request.history,
+            mode=request.mode
+        )
 
         return {
-            "answer": "Please upload a document first."
+            "answer": answer,
+            "sources": retrieved_docs
         }
 
-    context = search(req.question)
+    except Exception as e:
 
-    answer = f"""
-Based on the uploaded document:
+        return {
+            "error": str(e),
+            "answer": "AI processing error occurred.",
+            "sources": []
+        }
 
-{context[:1500]}
 
-Answer:
-{req.question}
-"""
+@app.post("/chat/stream")
+async def chat_stream(request: QuestionRequest):
 
-    return {
-        "answer": answer
-    }
+    try:
+
+        query_embedding = get_embedding(
+            request.question
+        )[0]
+
+        retrieved_docs = vector_store.search(
+            query_embedding,
+            top_k=3
+        )
+
+        context = "\n\n".join([
+            d["content"]
+            for d in retrieved_docs
+        ])
+
+        def event_stream():
+
+            yield f"event: sources\ndata: {json.dumps(retrieved_docs)}\n\n"
+
+            for token in stream_llm(
+                request.question,
+                context,
+                history=request.history,
+                mode=request.mode
+            ):
+
+                yield f"event: token\ndata: {json.dumps(token)}\n\n"
+
+            yield f"event: done\ndata: {{\"status\":\"complete\"}}\n\n"
+
+        return StreamingResponse(
+            event_stream(),
+            media_type="text/event-stream"
+        )
+
+    except Exception as e:
+
+        def error_stream():
+
+            yield f"event: error\ndata: {json.dumps({'message': str(e)})}\n\n"
+
+        return StreamingResponse(
+            error_stream(),
+            media_type="text/event-stream"
+        )
