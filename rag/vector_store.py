@@ -1,22 +1,47 @@
 import faiss
 import numpy as np
 
-class VectorStore:
-    def __init__(self, dim=384):
-        self.index = faiss.IndexFlatL2(dim)
-        self.texts = []
+DIMENSION = 384
 
-    def add(self, vectors, texts):
-        self.index.add(np.array(vectors).astype("float32"))
-        self.texts.extend(texts)
+index = faiss.IndexFlatL2(DIMENSION)
 
-    def search(self, vector, k=5):
-        if self.index.ntotal == 0:
-            return []
+documents = []
 
-        D, I = self.index.search(
-            np.array([vector]).astype("float32"),
-            k
-        )
 
-        return [self.texts[i] for i in I[0] if i < len(self.texts)]
+def add_documents(chunks, embeddings):
+
+    global documents
+
+    embeddings = np.array(
+        embeddings,
+        dtype="float32"
+    )
+
+    index.add(embeddings)
+
+    documents.extend(chunks)
+
+
+def search(query_embedding, k=5):
+
+    if len(documents) == 0:
+        return []
+
+    query_embedding = np.array(
+        [query_embedding],
+        dtype="float32"
+    )
+
+    distances, indices = index.search(
+        query_embedding,
+        k
+    )
+
+    results = []
+
+    for idx in indices[0]:
+
+        if idx < len(documents):
+            results.append(documents[idx])
+
+    return results

@@ -1,8 +1,16 @@
-from sentence_transformers import SentenceTransformer
+import numpy as np
 
-model = SentenceTransformer("all-MiniLM-L6-v2")
 
-def get_embedding(texts):
-    if isinstance(texts, str):
-        texts = [texts]
-    return model.encode(texts).tolist()
+def get_embedding(text):
+
+    vector = np.zeros(384)
+
+    for i, char in enumerate(text[:5000]):
+        vector[i % 384] += ord(char)
+
+    norm = np.linalg.norm(vector)
+
+    if norm > 0:
+        vector = vector / norm
+
+    return vector.astype("float32")
