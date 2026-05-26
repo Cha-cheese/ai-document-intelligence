@@ -1,11 +1,16 @@
 import os
 from groq import Groq
 
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+
+if not GROQ_API_KEY:
+    raise ValueError("Missing GROQ_API_KEY environment variable")
+
 client = Groq(
-    api_key=os.getenv("GROQ_API_KEY")
+    api_key=GROQ_API_KEY
 )
 
-MODEL_NAME = "llama-3.3-70b-versatile"
+MODEL_NAME = "llama-3.1-8b-instant"
 
 SYSTEM_PROMPT = """
 You are an advanced AI Document Intelligence Assistant.
@@ -24,7 +29,7 @@ RULES:
 - Summarize and explain intelligently
 - If user greets casually, respond naturally
 - If information is missing, say:
-  "The uploaded document does not contain enough information."
+"The uploaded document does not contain enough information."
 
 You are a professional AI assistant.
 """
@@ -72,41 +77,55 @@ Provide a detailed, intelligent, and conversational answer.
 
 def ask_llm(question, context, history=None, mode="chat"):
 
-    messages = build_messages(
-        question,
-        context,
-        history
-    )
+    try:
 
-    response = client.chat.completions.create(
-        model=MODEL_NAME,
-        messages=messages,
-        temperature=0.3,
-        max_tokens=1200
-    )
+        messages = build_messages(
+            question,
+            context,
+            history
+        )
 
-    return response.choices[0].message.content
+        response = client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=messages,
+            temperature=0.3,
+            max_tokens=1000
+        )
+
+        return response.choices[0].message.content
+
+    except Exception as e:
+
+        return f"LLM Error: {str(e)}"
 
 
 def stream_llm(question, context, history=None, mode="chat"):
 
-    messages = build_messages(
-        question,
-        context,
-        history
-    )
+    try:
 
-    stream = client.chat.completions.create(
-        model=MODEL_NAME,
-        messages=messages,
-        temperature=0.3,
-        max_tokens=1200,
-        stream=True
-    )
+        messages = build_messages(
+            question,
+            context,
+            history
+        )
 
-    for chunk in stream:
+        stream = client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=messages,
+            temperature=0.3,
+            max_tokens=1000,
+            stream=True
+        )
 
-        delta = chunk.choices[0].delta.content
+        for chunk in stream:
 
-        if delta:
-            yield delta
+            if chunk.choices:
+
+                delta = chunk.choices[0].delta.content
+
+                if delta:
+                    yield delta
+
+    except Exception as e:
+
+        yield f"\n\nLLM Streaming Error: {str(e)}"

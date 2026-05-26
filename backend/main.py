@@ -19,6 +19,8 @@ os.environ["OMP_NUM_THREADS"] = "1"
 
 app = FastAPI()
 
+print("✅ FastAPI app starting...")
+
 vector_store = VectorStore()
 
 
