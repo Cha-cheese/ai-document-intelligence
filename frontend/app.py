@@ -3,112 +3,70 @@ import requests
 
 API_URL = "https://ai-doc-backend-4dvz.onrender.com"
 
-st.set_page_config(
-    page_title="AI Document Chat",
-    layout="wide"
-)
+st.set_page_config(page_title="RAG Chat", layout="wide")
 
-# =========================
-# SESSION
-# =========================
-if "uploaded" not in st.session_state:
-    st.session_state.uploaded = False
-
+# -------------------------
+# INIT STATE (IMPORTANT FIX)
+# -------------------------
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# =========================
-# TITLE
-# =========================
+if "uploaded" not in st.session_state:
+    st.session_state.uploaded = False
+
+
+# -------------------------
+# UPLOAD
+# -------------------------
 st.title("📄 AI Document Chat")
 
-# =========================
-# UPLOAD
-# =========================
-uploaded_file = st.file_uploader(
-    "Upload PDF",
-    type=["pdf"]
-)
+file = st.file_uploader("Upload PDF")
 
-if uploaded_file is not None:
+if file and not st.session_state.uploaded:
 
-    files = {
-        "file": uploaded_file
-    }
+    r = requests.post(
+        f"{API_URL}/upload",
+        files={"file": file}
+    )
 
-    try:
-
-        r = requests.post(
-            f"{API_URL}/upload",
-            files=files,
-            timeout=180
-        )
-
-        r.raise_for_status()
-
-        data = r.json()
-
-        st.success(
-            f"Uploaded: {data['filename']}"
-        )
-
+    if r.status_code == 200:
+        st.success("Uploaded successfully")
         st.session_state.uploaded = True
+    else:
+        st.error(r.text)
 
-    except Exception as e:
 
-        st.error(str(e))
+# -------------------------
+# CHAT HISTORY (ALWAYS VISIBLE)
+# -------------------------
+for msg in st.session_state.messages:
+    with st.chat_message(msg["role"]):
+        st.write(msg["content"])
 
-# =========================
-# CHAT HISTORY
-# =========================
-for m in st.session_state.messages:
 
-    with st.chat_message(m["role"]):
-        st.markdown(m["content"])
+# -------------------------
+# INPUT (FIX: NEVER DISAPPEAR)
+# -------------------------
+question = st.chat_input("Ask about your document...")
 
-# =========================
-# CHAT INPUT
-# =========================
-prompt = st.chat_input(
-    "Ask about the document..."
-)
+if question:
 
-# IMPORTANT:
-# ช่องพิมจะอยู่ตลอด
-# ไม่ disable แล้ว
-
-if prompt:
-
-    st.session_state.messages.append({
-        "role": "user",
-        "content": prompt
-    })
+    st.session_state.messages.append({"role": "user", "content": question})
 
     with st.chat_message("user"):
-        st.markdown(prompt)
+        st.write(question)
 
-    try:
+    r = requests.post(
+        f"{API_URL}/chat",
+        json={"question": question}
+    )
 
-        r = requests.post(
-            f"{API_URL}/chat",
-            json={
-                "question": prompt
-            },
-            timeout=180
-        )
-
-        r.raise_for_status()
-
+    if r.status_code != 200:
+        answer = "Error: backend failed"
+    else:
         answer = r.json()["answer"]
 
-    except Exception as e:
-
-        answer = str(e)
+    st.session_state.messages.append({"role": "assistant", "content": answer})
 
     with st.chat_message("assistant"):
-        st.markdown(answer)
-
-    st.session_state.messages.append({
-        "role": "assistant",
-        "content": answer
-    })
+        st.write(answer)
