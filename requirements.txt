@@ -1,8 +1,7 @@
+faiss-cpu==1.7.4
+pymupdf
+numpy
 fastapi
 uvicorn
 streamlit
-pymupdf
-faiss-cpu
-numpy
 requests
-sentence-transformers==2.2.2
