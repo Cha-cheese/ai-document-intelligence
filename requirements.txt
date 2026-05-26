@@ -3,7 +3,7 @@ uvicorn
 python-multipart
 pymupdf
 numpy
-faiss-cpu
-requests
-streamlit
 openai
+requests
+faiss-cpu
+streamlit

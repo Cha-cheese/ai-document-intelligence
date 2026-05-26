@@ -1,22 +1,14 @@
 from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-
 import fitz
 import numpy as np
-
-from rag.embeddings import get_embedding
-from rag.vector_store import (
-    add_documents,
-    search
-)
 
 app = FastAPI()
 
 # =========================
 # CORS
 # =========================
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -26,144 +18,130 @@ app.add_middleware(
 )
 
 # =========================
-# GLOBAL STATE
+# MEMORY STORE
 # =========================
-
-document_uploaded = False
+DOCUMENT_TEXT = ""
 
 
 # =========================
-# REQUEST MODEL
+# EMBEDDING MOCK
 # =========================
+def embed(text):
+    v = np.zeros(128)
 
+    for i, c in enumerate(text[:1000]):
+        v[i % 128] += ord(c)
+
+    norm = np.linalg.norm(v)
+
+    if norm == 0:
+        return v
+
+    return v / norm
+
+
+# =========================
+# SEARCH
+# =========================
+def search(question):
+
+    global DOCUMENT_TEXT
+
+    chunks = []
+
+    text = DOCUMENT_TEXT
+
+    size = 800
+
+    for i in range(0, len(text), size):
+        chunks.append(text[i:i + size])
+
+    if not chunks:
+        return ""
+
+    qv = embed(question)
+
+    scores = []
+
+    for chunk in chunks:
+
+        cv = embed(chunk)
+
+        score = np.dot(qv, cv)
+
+        scores.append((score, chunk))
+
+    scores.sort(reverse=True)
+
+    top_chunks = [x[1] for x in scores[:3]]
+
+    return "\n".join(top_chunks)
+
+
+# =========================
+# CHAT REQUEST
+# =========================
 class ChatRequest(BaseModel):
     question: str
 
 
 # =========================
-# PDF TEXT EXTRACTION
+# ROOT
 # =========================
+@app.get("/")
+def root():
+    return {"message": "Backend running"}
 
-def extract_text_from_pdf(file_bytes):
+
+# =========================
+# UPLOAD PDF
+# =========================
+@app.post("/upload")
+async def upload(file: UploadFile = File(...)):
+
+    global DOCUMENT_TEXT
+
+    pdf_bytes = await file.read()
+
+    pdf = fitz.open(stream=pdf_bytes, filetype="pdf")
 
     text = ""
-
-    pdf = fitz.open(
-        stream=file_bytes,
-        filetype="pdf"
-    )
 
     for page in pdf:
         text += page.get_text()
 
-    return text
-
-
-# =========================
-# TEXT CHUNKING
-# =========================
-
-def chunk_text(text, chunk_size=500):
-
-    chunks = []
-
-    for i in range(0, len(text), chunk_size):
-
-        chunk = text[i:i + chunk_size]
-
-        if chunk.strip():
-            chunks.append(chunk)
-
-    return chunks
-
-
-# =========================
-# HEALTH
-# =========================
-
-@app.get("/")
-def health():
-
-    return {
-        "status": "running"
-    }
-
-
-# =========================
-# UPLOAD
-# =========================
-
-@app.post("/upload")
-async def upload_pdf(file: UploadFile = File(...)):
-
-    global document_uploaded
-
-    content = await file.read()
-
-    text = extract_text_from_pdf(content)
-
-    chunks = chunk_text(text)
-
-    embeddings = []
-
-    for chunk in chunks:
-
-        embedding = get_embedding(chunk)
-
-        embeddings.append(embedding)
-
-    add_documents(chunks, embeddings)
-
-    document_uploaded = True
+    DOCUMENT_TEXT = text
 
     return {
         "success": True,
         "filename": file.filename,
-        "chunks": len(chunks),
-        "profile": {
-            "word_count": len(text.split()),
-            "document_type": "PDF Document",
-            "reading_time_minutes": max(
-                1,
-                len(text.split()) // 200
-            )
-        }
+        "word_count": len(text.split())
     }
 
 
 # =========================
 # CHAT
 # =========================
-
 @app.post("/chat")
 def chat(req: ChatRequest):
 
-    global document_uploaded
+    global DOCUMENT_TEXT
 
-    if not document_uploaded:
+    if not DOCUMENT_TEXT.strip():
 
         return {
             "answer": "Please upload a document first."
         }
 
-    query_embedding = get_embedding(
-        req.question
-    )
-
-    docs = search(query_embedding)
-
-    context = "\n\n".join(docs)
+    context = search(req.question)
 
     answer = f"""
 Based on the uploaded document:
 
-{context[:3000]}
-
-Question:
-{req.question}
+{context[:1500]}
 
 Answer:
-This answer was generated using the uploaded document context.
+{req.question}
 """
 
     return {
