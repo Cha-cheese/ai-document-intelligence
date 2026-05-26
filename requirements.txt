@@ -3,6 +3,6 @@ uvicorn
 streamlit
 pymupdf
 faiss-cpu
-sentence-transformers
 numpy
 requests
+sentence-transformers==2.2.2

@@ -1,6 +1,6 @@
-import os
 from fastapi import FastAPI, UploadFile, File
 import shutil
+import os
 
 from backend.pdf_loader import extract_text_from_pdf
 from backend.rag import SimpleRAG
@@ -8,27 +8,27 @@ from backend.rag import SimpleRAG
 app = FastAPI()
 
 rag = SimpleRAG()
-DOC_TEXT = []
 
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 
-# --------------------
-# UPLOAD PDF
-# --------------------
+@app.get("/")
+def home():
+    return {"status": "ok"}  # ❗ สำคัญมาก Render จะ detect port
+
+
 @app.post("/upload")
 async def upload(file: UploadFile = File(...)):
 
-    file_path = f"{UPLOAD_DIR}/{file.filename}"
+    path = f"{UPLOAD_DIR}/{file.filename}"
 
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+    with open(path, "wb") as f:
+        shutil.copyfileobj(file.file, f)
 
-    text = extract_text_from_pdf(file_path)
+    text = extract_text_from_pdf(path)
 
-    # chunking simple
-    chunks = [text[i:i+500] for i in range(0, len(text), 500)]
+    chunks = [text[i:i+400] for i in range(0, len(text), 400)]
 
     rag.build(chunks)
 
@@ -42,30 +42,16 @@ async def upload(file: UploadFile = File(...)):
     }
 
 
-# --------------------
-# CHAT (RAG)
-# --------------------
 @app.post("/chat")
-async def chat(req: dict):
+def chat(req: dict):
 
-    question = req["question"]
+    q = req["question"]
 
-    docs = rag.search(question)
+    docs = rag.search(q) if rag.index is not None else []
 
     context = "\n".join(docs)
 
-    answer = f"""
-Based on document:
-
-{context[:1500]}
-
----
-
-Answer:
-{question} relates to the document content above.
-"""
-
     return {
-        "answer": answer,
+        "answer": f"Based on document:\n{context[:1200]}\n\nAnswer: {q}",
         "sources": docs
     }
