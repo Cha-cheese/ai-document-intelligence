@@ -1,76 +1,71 @@
+import os
 from fastapi import FastAPI, UploadFile, File
-from pydantic import BaseModel
+import shutil
 
 from backend.pdf_loader import extract_text_from_pdf
-from backend.vector_store import VectorStore
-from rag.embedding import embed
+from backend.rag import SimpleRAG
 
 app = FastAPI()
 
-store = VectorStore()
+rag = SimpleRAG()
+DOC_TEXT = []
+
+UPLOAD_DIR = "uploads"
+os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 
-# -------------------------
-# MODELS
-# -------------------------
-class ChatReq(BaseModel):
-    question: str
-
-
-# -------------------------
+# --------------------
 # UPLOAD PDF
-# -------------------------
+# --------------------
 @app.post("/upload")
 async def upload(file: UploadFile = File(...)):
 
-    content = await file.read()
-    text = extract_text_from_pdf(content)
+    file_path = f"{UPLOAD_DIR}/{file.filename}"
 
-    # simple chunking
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+
+    text = extract_text_from_pdf(file_path)
+
+    # chunking simple
     chunks = [text[i:i+500] for i in range(0, len(text), 500)]
 
-    for c in chunks:
-        vec = embed(c)
-        store.add(c, vec)
+    rag.build(chunks)
 
     return {
         "filename": file.filename,
         "chunks": len(chunks),
-        "status": "ok"
+        "profile": {
+            "word_count": len(text.split()),
+            "document_type": "PDF"
+        }
     }
 
 
-# -------------------------
-# CHAT (NO STREAM = STABLE)
-# -------------------------
+# --------------------
+# CHAT (RAG)
+# --------------------
 @app.post("/chat")
-def chat(req: ChatReq):
+async def chat(req: dict):
 
-    q_vec = embed(req.question)
-    docs = store.search(q_vec)
+    question = req["question"]
+
+    docs = rag.search(question)
 
     context = "\n".join(docs)
 
     answer = f"""
-Based on your document:
+Based on document:
 
 {context[:1500]}
 
 ---
 
 Answer:
-This document is a resume / technical profile with AI + software engineering projects.
+{question} relates to the document content above.
 """
 
     return {
         "answer": answer,
         "sources": docs
     }
-
-
-# -------------------------
-# HEALTH CHECK
-# -------------------------
-@app.get("/")
-def home():
-    return {"status": "running"}
